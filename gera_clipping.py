@@ -4,7 +4,8 @@ from google import genai
 import time
 
 # Configuração da API
-client = genai.Client(api_key="SUA_CHAVE_AQUI")
+api_key = os.environ.get("GEMINI_API_KEY")
+client = genai.Client(api_key=api_key)
 
 def resumir_noticia(texto_completo):
     # Prompt focado em impacto técnico e de negócios
