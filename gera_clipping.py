@@ -106,7 +106,7 @@ def enviar_email_html(lista_noticias):
     except Exception as e: print(f"Erro no envio: {e}")
 
 # --- Execução Principal ---
-termos_chave = ["FUST", "REDATA", "BRISANET", "FUNTTEL", "DATACENTER", "\"DATA CENTER\""]
+termos_chave = ["FUST", "REDATA", "BRISANET", "TV 3.0", "FUNTTEL", "DATACENTER", "\"DATA CENTER\""]
 noticias = buscar_clipping_24h(termos_chave)
 
 if noticias:
