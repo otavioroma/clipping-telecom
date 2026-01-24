@@ -1,0 +1,30 @@
+name: Clipping Diario Telecom
+
+on:
+  schedule:
+    # O cron usa o horário UTC. 11:00 UTC = 08:00 BRT
+    - cron: '0 11 * * *'
+  workflow_dispatch: # Permite rodar manualmente pelo painel do GitHub
+
+jobs:
+  clipping:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout do codigo
+        uses: actions/checkout@v4
+
+      - name: Configurar Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: Instalar dependencias
+        run: |
+          pip install google-genai beautifulsoup4 requests
+
+      - name: Executar script de clipping
+        env:
+          # Carrega a sua chave de API de forma segura
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: python seu_script.py
