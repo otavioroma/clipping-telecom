@@ -84,4 +84,6 @@ if noticias:
     # Aqui você chama sua função enviar_email_html(noticias_com_resumo)
     print(f"Sucesso! {len(noticias)} notícias recentes encontradas.")
 else:
-    print("Nenhuma novidade nas últimas 24 horas.")
+   # Opcional: Enviar um e-mail simples avisando que o robô rodou, mas está vazio
+    enviar_email_html({"status": {"titulo": "Sem novidades hoje", "fonte": "Sistema", "resumo": "Varredura concluída. Nenhuma notícia nova nas últimas 24h."}})
+    print("Varredura concluída com sucesso: Nenhuma novidade encontrada.")
