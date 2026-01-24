@@ -25,6 +25,9 @@ jobs:
 
       - name: Executar script de clipping
         env:
-          # Carrega a sua chave de API de forma segura
+          # Adicione todas as variáveis que o script Python vai ler
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          EMAIL_USER: ${{ secrets.EMAIL_USER }}
+          EMAIL_PASS: ${{ secrets.EMAIL_PASS }}
+          EMAIL_DESTINO: ${{ secrets.EMAIL_DESTINO }}
         run: python gera_clipping.py
