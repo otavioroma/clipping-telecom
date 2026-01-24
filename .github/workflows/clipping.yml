@@ -27,4 +27,4 @@ jobs:
         env:
           # Carrega a sua chave de API de forma segura
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-        run: python seu_script.py
+        run: python gera_clipping.py
