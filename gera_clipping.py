@@ -40,7 +40,8 @@ def buscar_clipping(termos):
 
     for nome_fonte, url_base in fontes.items():
         for termo in termos:
-            url_busca = f"{url_base}{termo.replace(' ', '+').replace('\"', '')}"
+            termo_url = termo.replace(' ', '+').replace('"', '')
+            url_busca = f"{url_base}{termo_url}"
             try:
                 headers = {'User-Agent': 'Mozilla/5.0'}
                 res = requests.get(url_busca, headers=headers, timeout=15)
