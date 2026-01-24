@@ -26,7 +26,7 @@ def extrair_data(soup_artigo):
 def buscar_clipping_24h(termos):
     fontes = {"Teletime": "https://teletime.com.br/?s=", "TeleSíntese": "https://telesintese.com.br/?s="}
     noticias_filtradas = {}
-    limite_24h = datetime.now() - timedelta(hours=24)
+    limite_24h = datetime.now() - timedelta(hours=48)
     headers = {'User-Agent': 'Mozilla/5.0'}
 
     for nome_fonte, url_base in fontes.items():
