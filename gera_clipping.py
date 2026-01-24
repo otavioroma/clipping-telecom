@@ -6,7 +6,7 @@ import os
 import smtplib
 from email.message import EmailMessage
 
-# 1. Configuração de Variáveis de Ambiente (Injetadas pelo GitHub Actions)
+# 1. Configuração de Variáveis de Ambiente
 api_key = os.environ.get("GEMINI_API_KEY")
 email_user = os.environ.get("EMAIL_USER")
 email_pass = os.environ.get("EMAIL_PASS")
@@ -26,7 +26,8 @@ def resumir_noticia(texto_completo):
             model="gemini-2.5-flash", 
             contents=prompt
         )
-        return response.text
+        # Converte quebras de linha da IA para <br> do HTML
+        return response.text.replace("\n", "<br>")
     except Exception as e:
         return f"Erro ao gerar resumo: {e}"
 
@@ -69,19 +70,53 @@ def buscar_clipping(termos):
                 print(f"Erro ao buscar '{termo}' em {nome_fonte}: {e}")
     return clipping_final
 
-def enviar_email(corpo_clipping):
+def enviar_email_html(lista_noticias):
     msg = EmailMessage()
-    msg['Subject'] = f'Clipping Telecom - {time.strftime("%d/%m/%Y")}'
+    data_hoje = time.strftime("%d/%m/%Y")
+    msg['Subject'] = f'📌 Clipping Telecom & Infra - {data_hoje}'
     msg['From'] = email_user
     msg['To'] = email_destino
-    msg.set_content(corpo_clipping)
+
+    # Construção do corpo HTML
+    html_corpo = f"""
+    <html>
+        <body style="font-family: Arial, sans-serif; color: #333; line-height: 1.6;">
+            <h2 style="color: #0056b3; border-bottom: 2px solid #0056b3; padding-bottom: 10px;">
+                Relatório Diário: Telecom e Infraestrutura
+            </h2>
+            <p style="font-size: 0.9em; color: #666;">Data: {data_hoje}</p>
+    """
+
+    for item in lista_noticias:
+        html_corpo += f"""
+        <div style="margin-bottom: 25px; padding: 15px; border-left: 5px solid #0056b3; background-color: #f9f9f9;">
+            <strong style="color: #d9534f;">[{item['Fonte']}]</strong> 
+            <span style="font-weight: bold; color: #555;">(Termo: {item['Termo']})</span><br>
+            <h3 style="margin: 10px 0;">
+                <a href="{item['Link']}" style="color: #0056b3; text-decoration: none;">{item['Título']}</a>
+            </h3>
+            <p style="font-size: 0.95em; background: #fff; padding: 10px; border: 1px solid #ddd; border-radius: 4px;">
+                {item['Resumo']}
+            </p>
+        </div>
+        """
+
+    html_corpo += """
+            <hr>
+            <p style="font-size: 0.8em; color: #888; text-align: center;">
+                Enviado automaticamente via GitHub Actions & Google Gemini API.
+            </p>
+        </body>
+    </html>
+    """
+
+    msg.add_alternative(html_corpo, subtype='html')
 
     try:
-        # Uso do servidor SMTP do Gmail com SSL
         with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
             smtp.login(email_user, email_pass)
             smtp.send_message(msg)
-        print("E-mail enviado com sucesso!")
+        print("E-mail HTML enviado com sucesso!")
     except Exception as e:
         print(f"Erro ao enviar e-mail: {e}")
 
@@ -90,15 +125,6 @@ termos_chave = ["FUST", "REDATA", "BRISANET", "FUNTTEL", "DATACENTER", "\"DATA C
 meu_clipping = buscar_clipping(termos_chave)
 
 if meu_clipping:
-    conteudo_email = "Relatório Diário de Notícias - Telecom e Infraestrutura\n\n"
-    for item in meu_clipping:
-        conteudo_email += f"[{item['Fonte']}] ({item['Termo']}) - {item['Título']}\n"
-        conteudo_email += f"Link: {item['Link']}\n"
-        conteudo_email += f"RESUMO:\n{item['Resumo']}\n"
-        conteudo_email += "-" * 50 + "\n\n"
-    
-    # Imprime no log do GitHub e envia para o e-mail
-    print(conteudo_email)
-    enviar_email(conteudo_email)
+    enviar_email_html(meu_clipping)
 else:
-    print("Nenhuma notícia encontrada hoje.")
+    print("Nenhuma notícia encontrada para os termos selecionados.")
