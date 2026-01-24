@@ -14,29 +14,12 @@ email_destino = os.environ.get("EMAIL_DESTINO")
 
 client = genai.Client(api_key=api_key)
 
-def resumir_noticia(texto_completo):
-    prompt = (
-        "Você é um analista de infraestrutura de telecomunicações. "
-        "Resuma a notícia a seguir em 3 tópicos curtos, focando em: "
-        "1. Ação principal | 2. Impacto para o setor | 3. Valores ou prazos envolvidos.\n\n"
-        f"Conteúdo:\n{texto_completo}"
-    )
-    try:
-        response = client.models.generate_content(
-            model="gemini-2.5-flash", 
-            contents=prompt
-        )
-        # Converte quebras de linha da IA para <br> do HTML
-        return response.text.replace("\n", "<br>")
-    except Exception as e:
-        return f"Erro ao gerar resumo: {e}"
-
 def buscar_clipping(termos):
     fontes = {
         "Teletime": "https://teletime.com.br/?s=",
         "TeleSíntese": "https://telesintese.com.br/?s="
     }
-    clipping_final = []
+    noticias_unicas = {} # Chave será a URL para evitar duplicatas
 
     for nome_fonte, url_base in fontes.items():
         for termo in termos:
@@ -49,83 +32,103 @@ def buscar_clipping(termos):
                 links = soup.select('h2.entry-title a, h3.entry-title a')[:2]
 
                 for link in links:
-                    titulo = link.get_text().strip()
                     url_artigo = link['href']
-                    
-                    res_artigo = requests.get(url_artigo, headers=headers)
-                    soup_artigo = BeautifulSoup(res_artigo.text, 'html.parser')
-                    paragrafos = soup_artigo.find_all('p')
-                    texto_para_resumo = " ".join([p.text for p in paragrafos[:6]])
-
-                    resumo = resumir_noticia(texto_para_resumo)
-                    
-                    clipping_final.append({
-                        "Fonte": nome_fonte,
-                        "Termo": termo,
-                        "Título": titulo,
-                        "Link": url_artigo,
-                        "Resumo": resumo
-                    })
-                    time.sleep(1)
+                    # Só adiciona se a URL ainda não foi coletada
+                    if url_artigo not in noticias_unicas:
+                        noticias_unicas[url_artigo] = {
+                            "titulo": link.get_text().strip(),
+                            "fonte": nome_fonte,
+                            "termo": termo
+                        }
             except Exception as e:
                 print(f"Erro ao buscar '{termo}' em {nome_fonte}: {e}")
-    return clipping_final
+    return noticias_unicas
 
-def enviar_email_html(lista_noticias):
+def processar_resumos_ia(dict_noticias):
+    if not dict_noticias:
+        return {}
+
+    # Monta um único prompt gigante com todas as notícias para economizar chamadas
+    prompt_batch = (
+        "Você é um analista de infraestrutura de telecomunicações. "
+        "Abaixo estão várias notícias. Para CADA UMA, gere um resumo de 3 tópicos (Ação, Impacto, Valores/Prazos). "
+        "Mantenha a ordem e identifique-as pelo título.\n\n"
+    )
+
+    links_ordenados = list(dict_noticias.keys())
+    for url in links_ordenados:
+        try:
+            headers = {'User-Agent': 'Mozilla/5.0'}
+            res = requests.get(url, headers=headers, timeout=15)
+            soup = BeautifulSoup(res.text, 'html.parser')
+            paragrafos = soup.find_all('p')
+            texto_base = " ".join([p.text for p in paragrafos[:4]]) # Reduzi para 4 parágrafos (mais economia)
+            prompt_batch += f"TÍTULO: {dict_noticias[url]['titulo']}\nCONTEÚDO: {texto_base}\n\n---\n\n"
+        except:
+            continue
+
+    try:
+        # UMA ÚNICA CHAMADA À API PARA TUDO
+        response = client.models.generate_content(
+            model="gemini-2.5-flash", 
+            contents=prompt_batch
+        )
+        # Dividimos a resposta da IA (usando o separador que pedimos ou confiando na estrutura)
+        # Para facilitar o HTML, vamos tratar a resposta como um bloco único ou processar linhas
+        resumos_brutos = response.text.split("---")
+        
+        # Atribuímos os resumos de volta ao dicionário
+        for i, url in enumerate(links_ordenados):
+            if i < len(resumos_brutos):
+                dict_noticias[url]['resumo'] = resumos_brutos[i].strip().replace("\n", "<br>")
+            else:
+                dict_noticias[url]['resumo'] = "Resumo não disponível."
+    except Exception as e:
+        print(f"Erro na IA: {e}")
+        for url in dict_noticias: dict_noticias[url]['resumo'] = "Erro ao gerar resumo."
+    
+    return dict_noticias
+
+def enviar_email_html(lista_final):
     msg = EmailMessage()
     data_hoje = time.strftime("%d/%m/%Y")
-    msg['Subject'] = f'📌 Clipping Telecom & Infra - {data_hoje}'
+    msg['Subject'] = f'📌 Clipping Telecom Otimizado - {data_hoje}'
     msg['From'] = email_user
     msg['To'] = email_destino
 
-    # Construção do corpo HTML
     html_corpo = f"""
     <html>
-        <body style="font-family: Arial, sans-serif; color: #333; line-height: 1.6;">
-            <h2 style="color: #0056b3; border-bottom: 2px solid #0056b3; padding-bottom: 10px;">
-                Relatório Diário: Telecom e Infraestrutura
-            </h2>
-            <p style="font-size: 0.9em; color: #666;">Data: {data_hoje}</p>
+        <body style="font-family: Arial, sans-serif; color: #333;">
+            <h2 style="color: #0056b3; border-bottom: 2px solid #0056b3;">Relatório Diário Otimizado</h2>
+            <p>Economia de API: Processadas {len(lista_final)} notícias únicas.</p>
     """
 
-    for item in lista_noticias:
+    for url, info in lista_final.items():
         html_corpo += f"""
-        <div style="margin-bottom: 25px; padding: 15px; border-left: 5px solid #0056b3; background-color: #f9f9f9;">
-            <strong style="color: #d9534f;">[{item['Fonte']}]</strong> 
-            <span style="font-weight: bold; color: #555;">(Termo: {item['Termo']})</span><br>
-            <h3 style="margin: 10px 0;">
-                <a href="{item['Link']}" style="color: #0056b3; text-decoration: none;">{item['Título']}</a>
-            </h3>
-            <p style="font-size: 0.95em; background: #fff; padding: 10px; border: 1px solid #ddd; border-radius: 4px;">
-                {item['Resumo']}
-            </p>
+        <div style="margin-bottom: 20px; padding: 10px; border-left: 5px solid #0056b3; background: #f4f4f4;">
+            <strong>[{info['fonte']}]</strong> <br>
+            <h3 style="margin: 5px 0;"><a href="{url}">{info['titulo']}</a></h3>
+            <div style="background: #fff; padding: 8px; border: 1px solid #ddd;">
+                {info.get('resumo', 'Sem resumo')}
+            </div>
         </div>
         """
 
-    html_corpo += """
-            <hr>
-            <p style="font-size: 0.8em; color: #888; text-align: center;">
-                Enviado automaticamente via GitHub Actions & Google Gemini API.
-            </p>
-        </body>
-    </html>
-    """
-
+    html_corpo += "</body></html>"
     msg.add_alternative(html_corpo, subtype='html')
 
     try:
         with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
             smtp.login(email_user, email_pass)
             smtp.send_message(msg)
-        print("E-mail HTML enviado com sucesso!")
-    except Exception as e:
-        print(f"Erro ao enviar e-mail: {e}")
+        print("E-mail enviado!")
+    except Exception as e: print(f"Erro e-mail: {e}")
 
-# --- Execução Principal ---
+# --- Execução ---
 termos_chave = ["FUST", "REDATA", "BRISANET", "FUNTTEL", "DATACENTER", "\"DATA CENTER\""]
-meu_clipping = buscar_clipping(termos_chave)
-
-if meu_clipping:
-    enviar_email_html(meu_clipping)
+noticias = buscar_clipping(termos_chave)
+if noticias:
+    noticias_com_resumo = processar_resumos_ia(noticias)
+    enviar_email_html(noticias_com_resumo)
 else:
-    print("Nenhuma notícia encontrada para os termos selecionados.")
+    print("Nada encontrado.")
