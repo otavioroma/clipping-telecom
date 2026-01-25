@@ -6,7 +6,7 @@ on:
     # 1-5 significa de Segunda (1) a Sexta-feira (5)
     - cron: '*/5 * * * *'
     # - cron: '0 12 * * 1-5'
-  # workflow_dispatch: # Mantém o botão de rodar manualmente disponível
+  workflow_dispatch: # Mantém o botão de rodar manualmente disponível
 
 jobs:
   clipping:
