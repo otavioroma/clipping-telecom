@@ -79,18 +79,45 @@ def buscar_clipping_inteligente(termos):
 
 def processar_resumos_batch(dict_noticias):
     if not dict_noticias: return None
-    prompt = "Resuma cada notícia abaixo em 3 pontos (Ação, Impacto, Valores). Separe com '---'.\n\n"
-    for url, info in dict_noticias.items():
-        prompt += f"TÍTULO: {info['titulo']}\nCONTEÚDO: {info['texto']}\n\n---\n\n"
+    
+    # Novo prompt com persona de analista e instrução de descarte
+    prompt = (
+        "Você é um Analista de Estratégia em Telecomunicações. "
+        "Sua tarefa é resumir notícias do setor de infraestrutura digital e telecom.\n\n"
+        "REGRAS CRÍTICAS:\n"
+        "1. Se a notícia NÃO for sobre telecomunicações, TI, datacenters, operadoras ou políticas do setor, "
+        "responda apenas a palavra 'DESCARTAR' para essa notícia.\n"
+        "2. Se for relevante, resuma em 3 pontos: (1. Ação | 2. Impacto | 3. Valores/Prazos).\n"
+        "3. Separe os resumos de cada notícia com '---'.\n\n"
+    )
+    
+    links_ordenados = list(dict_noticias.keys())
+    for url in links_ordenados:
+        prompt += f"TÍTULO: {dict_noticias[url]['titulo']}\nCONTEÚDO: {dict_noticias[url]['texto']}\n\n---\n\n"
+
     try:
         response = client.models.generate_content(model="gemini-2.5-flash", contents=prompt)
         resumos = response.text.split("---")
-        for i, url in enumerate(dict_noticias.keys()):
-            if i < len(resumos):
-                dict_noticias[url]['resumo'] = resumos[i].strip().replace("\n", "<br>")
+        
+        noticias_filtradas = {}
+        
+        # Itera sobre os resumos gerados e verifica o descarte
+        for i, resumo_bruto in enumerate(resumos):
+            if i < len(links_ordenados):
+                url = links_ordenados[i]
+                conteudo = resumo_bruto.strip()
+                
+                # Se a IA não descartou, adicionamos ao dicionário final
+                if "DESCARTAR" not in conteudo.upper():
+                    dict_noticias[url]['resumo'] = conteudo.replace("\n", "<br>")
+                    noticias_filtradas[url] = dict_noticias[url]
+        
+        return noticias_filtradas
+    except Exception as e:
+        print(f"Erro no processamento IA: {e}")
+        # Em caso de erro, retorna o dicionário original para não perder as notícias
         return dict_noticias
-    except: return dict_noticias
-
+        
 def enviar_email_html(lista_noticias, destinatarios):
     if not destinatarios:
         print("Erro: Nenhum destinatário encontrado na lista.")
