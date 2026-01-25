@@ -34,7 +34,11 @@ def extrair_data(soup_artigo):
     return None
 
 def buscar_clipping_inteligente(termos):
-    fontes = {"Teletime": "https://teletime.com.br/?s=", "TeleSíntese": "https://telesintese.com.br/?s="}
+    fontes = {
+    "Teletime": "https://teletime.com.br/?s=", 
+    "TeleSíntese": "https://telesintese.com.br/?s=",
+    "Convergência Digital": "https://convergenciadigital.com.br/?s="
+    }
     noticias_filtradas = {}
     
     agora = datetime.now()
