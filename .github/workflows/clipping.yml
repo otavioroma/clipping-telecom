@@ -2,8 +2,8 @@ name: Clipping Diario Telecom
 
 on:
   schedule:
-    - cron: '*/5 * * * *'
-  workflow_dispatch: # Mantém o botão de rodar manualmente disponível
+    - cron: '0 12 * * 1-5'
+  workflow_dispatch:
 
 jobs:
   clipping:
