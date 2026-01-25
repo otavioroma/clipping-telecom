@@ -5,13 +5,23 @@ import time, os, smtplib
 from datetime import datetime, timedelta
 from email.message import EmailMessage
 
-# 1. Configurações de Ambiente
+# 1. Configurações de Ambiente (Segurança)
 api_key = os.environ.get("GEMINI_API_KEY")
 email_user = os.environ.get("EMAIL_USER")
 email_pass = os.environ.get("EMAIL_PASS")
-email_destino = os.environ.get("EMAIL_DESTINO")
 
 client = genai.Client(api_key=api_key)
+
+# --- FUNÇÕES DE SUPORTE PARA LISTAS EXTERNAS ---
+
+def carregar_lista(nome_arquivo):
+    """Lê arquivos .lista e retorna uma lista de strings limpas."""
+    if os.path.exists(nome_arquivo):
+        with open(nome_arquivo, 'r', encoding='utf-8') as f:
+            # Filtra linhas vazias e remove espaços/quebras de linha
+            return [linha.strip() for linha in f if linha.strip()]
+    print(f"Aviso: Arquivo {nome_arquivo} não encontrado.")
+    return []
 
 def extrair_data(soup_artigo):
     """Tenta localizar a data de publicação no HTML da notícia."""
@@ -23,20 +33,16 @@ def extrair_data(soup_artigo):
         return datetime.fromisoformat(time_tag['datetime'].split('T')[0])
     return None
 
-def buscar_clipping_24h(termos):
+def buscar_clipping_inteligente(termos):
     fontes = {"Teletime": "https://teletime.com.br/?s=", "TeleSíntese": "https://telesintese.com.br/?s="}
     noticias_filtradas = {}
     
-    # Lógica dinâmica: Segunda-feira (weekday == 0) busca 72h, outros dias 24h
     agora = datetime.now()
-    if agora.weekday() == 0:
-        horas_atras = 72
-        print("Hoje é segunda-feira. Buscando notícias das últimas 72 horas...")
-    else:
-        horas_atras = 24
-        print(f"Buscando notícias das últimas {horas_atras} horas...")
-    
+    # Lógica dinâmica: Segunda-feira (0) busca 72h, outros dias 24h
+    horas_atras = 72 if agora.weekday() == 0 else 24
     limite_periodo = agora - timedelta(hours=horas_atras)
+    
+    print(f"Iniciando busca. Janela: {horas_atras} horas.")
     headers = {'User-Agent': 'Mozilla/5.0'}
 
     for nome_fonte, url_base in fontes.items():
@@ -54,7 +60,8 @@ def buscar_clipping_24h(termos):
                         soup_art = BeautifulSoup(res_art.text, 'html.parser')
                         data_pub = extrair_data(soup_art)
 
-                        if data_pub and data_pub >= limite_24h:
+                        # Corrigido: usando limite_periodo (dinâmico) em vez de limite_24h
+                        if data_pub and data_pub >= limite_periodo:
                             paragrafos = soup_art.find_all('p')
                             noticias_filtradas[url_artigo] = {
                                 "titulo": link.get_text().strip(),
@@ -80,29 +87,35 @@ def processar_resumos_batch(dict_noticias):
         return dict_noticias
     except: return dict_noticias
 
-def enviar_email_html(lista_noticias):
+def enviar_email_html(lista_noticias, destinatarios):
+    if not destinatarios:
+        print("Erro: Nenhum destinatário encontrado na lista.")
+        return
+
     msg = EmailMessage()
     data_hoje = time.strftime("%d/%m/%Y")
     msg['Subject'] = f'📌 Clipping Telecom & Infra - {data_hoje}'
     msg['From'] = email_user
-    msg['To'] = email_destino
+    # Para enviar para vários, unimos a lista com vírgulas
+    msg['To'] = ", ".join(destinatarios)
 
     html_corpo = f"""
     <html>
         <body style="font-family: Arial, sans-serif; color: #333;">
-            <h2 style="color: #0056b3; border-bottom: 2px solid #0056b3;">Relatório Diário</h2>
+            <h2 style="color: #0056b3; border-bottom: 2px solid #0056b3; padding-bottom: 10px;">
+                Relatório Diário: Telecom e Infraestrutura
+            </h2>
     """
     for url, item in lista_noticias.items():
-        # Tratamento para o caso de teste ou notícias reais
         titulo = item.get('titulo', 'Sem título')
         fonte = item.get('fonte', 'Desconhecida')
         resumo = item.get('resumo', 'Sem resumo disponível.')
         
         html_corpo += f"""
-        <div style="margin-bottom: 20px; padding: 10px; border-left: 5px solid #0056b3; background: #f4f4f4;">
+        <div style="margin-bottom: 25px; padding: 15px; border-left: 5px solid #0056b3; background: #f9f9f9;">
             <strong>[{fonte}]</strong><br>
-            <h3 style="margin: 5px 0;"><a href="{url}">{titulo}</a></h3>
-            <div style="background: #fff; padding: 8px; border: 1px solid #ddd;">{resumo}</div>
+            <h3 style="margin: 5px 0;"><a href="{url}" style="color: #0056b3; text-decoration: none;">{titulo}</a></h3>
+            <div style="background: #fff; padding: 10px; border: 1px solid #ddd; border-radius: 4px;">{resumo}</div>
         </div>
         """
     html_corpo += "</body></html>"
@@ -112,22 +125,29 @@ def enviar_email_html(lista_noticias):
         with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
             smtp.login(email_user, email_pass)
             smtp.send_message(msg)
-        print("E-mail enviado com sucesso!")
+        print(f"E-mail enviado com sucesso para {len(destinatarios)} pessoas!")
     except Exception as e: print(f"Erro no envio: {e}")
 
 # --- Execução Principal ---
-termos_chave = ["FUST", "REDATA", "BRISANET", "TV 3.0", "FUNTTEL", "DATACENTER", "\"DATA CENTER\""]
-noticias = buscar_clipping_24h(termos_chave)
 
-if noticias:
-    noticias_com_resumo = processar_resumos_batch(noticias)
-    enviar_email_html(noticias_com_resumo)
+# 1. Carrega as listas externas
+emails_destino = carregar_lista("email_destino.lista")
+termos_monitorados = carregar_lista("termos_chave.lista")
+
+if not termos_monitorados:
+    print("Erro: Nenhum termo para buscar. Verifique o arquivo termos_chave.lista.")
 else:
-    # Para teste, envia um aviso de sistema ativo
-    enviar_email_html({
-        "https://status.com": {
-            "titulo": "Monitoramento Ativo: Nenhuma novidade nas últimas 24h",
-            "fonte": "Sistema",
-            "resumo": "O robô realizou a varredura nos portais Teletime e TeleSíntese e não encontrou novos artigos para os termos monitorados."
-        }
-    })
+    noticias = buscar_clipping_inteligente(termos_monitorados)
+
+    if noticias:
+        noticias_com_resumo = processar_resumos_batch(noticias)
+        enviar_email_html(noticias_com_resumo, emails_destino)
+    else:
+        # Aviso de sistema ativo caso não encontre nada
+        enviar_email_html({
+            "https://status.com": {
+                "titulo": "Monitoramento Ativo: Nenhuma novidade no período",
+                "fonte": "Sistema",
+                "resumo": "O robô realizou a varredura e não encontrou novos artigos para os termos monitorados."
+            }
+        }, emails_destino)
