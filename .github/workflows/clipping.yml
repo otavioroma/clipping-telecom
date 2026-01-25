@@ -4,7 +4,8 @@ on:
   schedule:
     # 12:00 UTC corresponde às 09:00 BRT (Horário de Brasília)
     # 1-5 significa de Segunda (1) a Sexta-feira (5)
-    - cron: '0 12 * * 1-5'
+    - cron: '*/5 * * * *'
+    # - cron: '0 12 * * 1-5'
   workflow_dispatch: # Mantém o botão de rodar manualmente disponível
 
 jobs:
