@@ -26,7 +26,17 @@ def extrair_data(soup_artigo):
 def buscar_clipping_24h(termos):
     fontes = {"Teletime": "https://teletime.com.br/?s=", "TeleSíntese": "https://telesintese.com.br/?s="}
     noticias_filtradas = {}
-    limite_24h = datetime.now() - timedelta(hours=48)
+    
+    # Lógica dinâmica: Segunda-feira (weekday == 0) busca 72h, outros dias 24h
+    agora = datetime.now()
+    if agora.weekday() == 0:
+        horas_atras = 72
+        print("Hoje é segunda-feira. Buscando notícias das últimas 72 horas...")
+    else:
+        horas_atras = 24
+        print(f"Buscando notícias das últimas {horas_atras} horas...")
+    
+    limite_periodo = agora - timedelta(hours=horas_atras)
     headers = {'User-Agent': 'Mozilla/5.0'}
 
     for nome_fonte, url_base in fontes.items():
