@@ -82,12 +82,12 @@ def processar_resumos_batch(dict_noticias):
     
     # Novo prompt com persona de analista e instrução de descarte
     prompt = (
-        "Você é um Analista de Estratégia em Telecomunicações. "
+        "Você é um Analista de Telecomunicações e Tecnologia da Informação."
         "Sua tarefa é resumir notícias do setor de infraestrutura digital e telecom.\n\n"
         "REGRAS CRÍTICAS:\n"
-        "1. Se a notícia NÃO for sobre telecomunicações, TI, datacenters, operadoras ou políticas do setor, "
+        "1. Se a notícia NÃO for sobre telecomunicações, Tecnologia de informaçãoI, datacenters, operadoras ou políticas do setor, "
         "responda apenas a palavra 'DESCARTAR' para essa notícia.\n"
-        "2. Se for relevante, resuma em 3 pontos: (1. Ação | 2. Impacto | 3. Valores/Prazos).\n"
+        "2. Se for relevante, resuma em 3 pontos: (1. Ação | 2. Impacto | 3. Valores).\n"
         "3. Separe os resumos de cada notícia com '---'.\n\n"
     )
     
