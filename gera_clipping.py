@@ -4,6 +4,15 @@ from google import genai
 import time, os, smtplib
 from datetime import datetime, timedelta
 from email.message import EmailMessage
+import logging
+
+# Configura o log para salvar em 'clipping.log'
+logging.basicConfig(
+    filename='clipping.log',
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    encoding='utf-8'
+)
 
 # 1. Configurações de Ambiente (Segurança)
 api_key = os.environ.get("GEMINI_API_KEY")
@@ -59,6 +68,8 @@ def buscar_clipping_inteligente(termos):
 
                 for link in links:
                     url_artigo = link['href']
+                    logging.info(f"Link capturado na busca: {url_artigo}") # LOG AQUI
+                    
                     if url_artigo not in noticias_filtradas:
                         res_art = requests.get(url_artigo, headers=headers, timeout=10)
                         soup_art = BeautifulSoup(res_art.text, 'html.parser')
@@ -73,6 +84,10 @@ def buscar_clipping_inteligente(termos):
                                 "termo": termo,
                                 "texto": " ".join([p.text for p in paragrafos[:4]])
                             }
+                        else:
+                            # O 'else' precisa estar alinhado com o 'if'
+                            # E a variável data_pub mostrará por que falhou
+                            logging.warning(f"Link descartado por DATA ({data_pub}): {url_artigo}")
                 time.sleep(0.5)
             except: continue
     return noticias_filtradas
@@ -111,6 +126,8 @@ def processar_resumos_batch(dict_noticias):
                 if "DESCARTAR" not in conteudo.upper():
                     dict_noticias[url]['resumo'] = conteudo.replace("\n", "<br>")
                     noticias_filtradas[url] = dict_noticias[url]
+                else:
+                    logging.warning(f"IA descartou o conteúdo por irrelevância: {url}") # LOG AQUI
         
         return noticias_filtradas
     except Exception as e:
