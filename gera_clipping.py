@@ -70,7 +70,7 @@ def buscar_clipping_inteligente(termos):
 
                 for link in links:
                     url_artigo = link['href']
-                    logging.info(f"Link capturado na busca: {url_artigo}") # LOG AQUI
+                    logging.info(f"Termo: [{termo}] | Link capturado: {url_artigo}") # LOG AQUI
                     
                     if url_artigo not in noticias_filtradas:
                         res_art = requests.get(url_artigo, headers=headers, timeout=10)
