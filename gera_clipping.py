@@ -56,6 +56,8 @@ def buscar_clipping_inteligente(termos):
     limite_periodo = agora - timedelta(hours=horas_atras)
     
     print(f"Iniciando busca. Janela: {horas_atras} horas.")
+    # Isso faz com que o limite seja o início do dia (00:00) de 24h ou 72h atrás
+    limite_periodo = limite_periodo.replace(hour=0, minute=0, second=0, microsecond=0)
     headers = {'User-Agent': 'Mozilla/5.0'}
 
     for nome_fonte, url_base in fontes.items():
