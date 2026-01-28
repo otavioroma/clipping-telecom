@@ -47,7 +47,9 @@ def buscar_clipping_inteligente(termos):
     "TeleTime": "https://teletime.com.br/?s=", 
     "TeleSíntese": "https://telesintese.com.br/?s=",
     "MobileTime": "https://www.mobiletime.com.br/?s=",
-    "TelaViva": "https://telaviva.com.br/?s="
+    "TelaViva": "https://telaviva.com.br/?s=",
+    "PortalExibidor": "https://www.exibidor.com.br/?s=",
+    "FilmeB": "https://www.filmeb.com.br/?s="
     }
     noticias_filtradas = {}
     
@@ -100,15 +102,15 @@ def processar_resumos_batch(dict_noticias):
     
     # Novo prompt com persona de analista e instrução de descarte
     prompt = (
-        "Você é um Analista de Telecomunicações e Tecnologia da Informação."
-        "Sua tarefa é resumir notícias do setor de infraestrutura digital e telecom.\n\n"
-        "REGRAS CRÍTICAS:\n"
-        "1. Se a notícia NÃO for sobre telecomunicações, Tecnologia de informação, datacenters, operadoras ou políticas do setor, "
-        "responda apenas a palavra 'DESCARTAR' para essa notícia.\n"
-        "2. Se for relevante, resuma em 3 pontos: (1. Ação | 2. Impacto | 3. Valores).\n"
-        "3. RESTRIÇÃO DE FORMATAÇÃO: Não utilize negrito (**), itálico ou qualquer marcação Markdown nos títulos ou no corpo do texto. Escreva apenas em texto puro.\n"
-        "4. Separe os resumos de cada notícia com '---'.\n\n"
-    )
+    "Você é um Analista de Mercado especializado em Telecomunicações, Tecnologia da Informação e Indústria Audiovisual.\n"
+    "Sua tarefa é resumir notícias sobre infraestrutura digital, conectividade, mercado de cinema e exibição.\n\n"
+    "REGRAS CRÍTICAS:\n"
+    "1. ACEITE apenas notícias sobre: operadoras, data centers, políticas de telecom, mercado exibidor (salas de cinema), "
+    "produção audiovisual, streaming ou tecnologias de projeção/som. Se for fora disso, responda 'DESCARTAR'.\n"
+    "2. Se for relevante, resuma em 3 pontos: (Ação | Impacto | Valores).\n"
+    "3. RESTRIÇÃO DE FORMATAÇÃO: Não utilize negrito (**) ou Markdown. Use apenas texto puro.\n"
+    "4. Separe os resumos de cada notícia com '---'.\n\n"
+)
     
     links_ordenados = list(dict_noticias.keys())
     for url in links_ordenados:
