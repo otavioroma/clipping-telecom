@@ -127,6 +127,7 @@ def processar_resumos_batch(dict_noticias):
                 
                 # Se a IA não descartou, adicionamos ao dicionário final
                 if "DESCARTAR" not in conteudo.upper():
+                    resumo_limpo = formatar_resumo_telecom(conteudo) #formata o HTML antes de salvar
                     dict_noticias[url]['resumo'] = conteudo.replace("\n", "<br>")
                     noticias_filtradas[url] = dict_noticias[url]
                 else:
@@ -180,22 +181,20 @@ def enviar_email_html(lista_noticias, destinatarios):
     except Exception as e: print(f"Erro no envio: {e}")
 
 def formatar_resumo_telecom(texto_retornado_ia):
-    # O dicionário mapeia o texto puro para a versão com negrito e quebra de linha
-    # O \n garante que o interpretador pule para a linha de baixo
+    # Usamos <strong> para negrito e <br> para quebra de linha no e-mail
     mapeamento = {
-        "TÍTULO:": "**TÍTULO:**",
-        "1. Ação:": "\n**1. Ação:**",
-        "2. Impacto:": "\n**2. Impacto:**",
-        "3. Valores:": "\n**3. Valores:**"
+        "TÍTULO:": "<strong>TÍTULO:</strong>",
+        "1. Ação:": "<br><strong>1. Ação:</strong>",
+        "2. Impacto:": "<br><strong>2. Impacto:</strong>",
+        "3. Valores:": "<br><strong>3. Valores:</strong>"
     }
     
     texto_formatado = texto_retornado_ia
-    
     for original, formatado in mapeamento.items():
         texto_formatado = texto_formatado.replace(original, formatado)
     
     return texto_formatado.strip()
-
+    
 # --- Execução Principal ---
 
 # 1. Carrega as listas externas
