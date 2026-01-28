@@ -44,9 +44,10 @@ def extrair_data(soup_artigo):
 
 def buscar_clipping_inteligente(termos):
     fontes = {
-    "Teletime": "https://teletime.com.br/?s=" 
-    # "TeleSíntese": "https://telesintese.com.br/?s=",
-    # "Convergência Digital": "https://convergenciadigital.com.br/?s="
+    "TeleTime": "https://teletime.com.br/?s=", 
+    "TeleSíntese": "https://telesintese.com.br/?s=",
+    "MobileTime": "https://www.mobiletime.com.br/?s=",
+    "TelaViva": "https://telaviva.com.br/?s="
     }
     noticias_filtradas = {}
     
