@@ -2,7 +2,7 @@ name: Clipping Diario Telecom
 
 on:
   # schedule:
-  # - cron: '0 12 * * 1-5'
+  #   - cron: '0 12 * * 1-5'
   workflow_dispatch:
 
 jobs:
@@ -14,21 +14,24 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Configurar Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+          # O cache 'pip' agora vai monitorar seu arquivo requirements.txt automaticamente
+          cache: 'pip'
 
       - name: Instalar dependencias
         run: |
-          pip install google-genai beautifulsoup4 requests
+          python -m pip install --upgrade pip
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
 
       - name: Executar script de clipping
         env:
-          # Adicione todas as variáveis que o script Python vai ler
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           EMAIL_USER: ${{ secrets.EMAIL_USER }}
           EMAIL_PASS: ${{ secrets.EMAIL_PASS }}
         run: python gera_clipping.py
+
       - name: Upload logs
         if: always()
         uses: actions/upload-artifact@v4
