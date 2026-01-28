@@ -179,6 +179,23 @@ def enviar_email_html(lista_noticias, destinatarios):
         print(f"E-mail enviado com sucesso para {len(destinatarios)} pessoas!")
     except Exception as e: print(f"Erro no envio: {e}")
 
+def formatar_resumo_telecom(texto_retornado_ia):
+    # O dicionário mapeia o texto puro para a versão com negrito e quebra de linha
+    # O \n garante que o interpretador pule para a linha de baixo
+    mapeamento = {
+        "TÍTULO:": "**TÍTULO:**",
+        "1. Ação:": "\n**1. Ação:**",
+        "2. Impacto:": "\n**2. Impacto:**",
+        "3. Valores:": "\n**3. Valores:**"
+    }
+    
+    texto_formatado = texto_retornado_ia
+    
+    for original, formatado in mapeamento.items():
+        texto_formatado = texto_formatado.replace(original, formatado)
+    
+    return texto_formatado.strip()
+
 # --- Execução Principal ---
 
 # 1. Carrega as listas externas
