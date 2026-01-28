@@ -203,10 +203,10 @@ def formatar_resumo_telecom(texto_retornado_ia):
         substituicoes = {
             "1. Ação:": "<strong>Ação:</strong>",
             "2. Impacto:": "<strong>Impacto:</strong>",
-            "3. Valores:": "<strong>Valores:</strong>",
+            "3. Valores:": "<strong>Números:</strong>",
             "Ação:": "<strong>Ação:</strong>",
             "Impacto:": "<strong>Impacto:</strong>",
-            "Valores:": "<strong>Valores:</strong>"
+            "Valores:": "<strong>Números:</strong>"
         }
         
         encontrou_topico = False
