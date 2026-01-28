@@ -44,43 +44,48 @@ def extrair_data(soup_artigo):
 
 def buscar_clipping_inteligente(termos):
     fontes = {
-    "TeleTime": "https://teletime.com.br/?s=", 
-    "TeleSíntese": "https://telesintese.com.br/?s=",
-    "MobileTime": "https://www.mobiletime.com.br/?s=",
-    "TelaViva": "https://telaviva.com.br/?s=",
-    "PortalExibidor": "https://www.exibidor.com.br/?s=",
-    "FilmeB": "https://www.filmeb.com.br/?s="
+        "TeleTime": "https://teletime.com.br/?s=", 
+        "TeleSíntese": "https://telesintese.com.br/?s=",
+        "MobileTime": "https://www.mobiletime.com.br/?s=",
+        "TelaViva": "https://telaviva.com.br/?s=",
+        "PortalExibidor": "https://www.exibidor.com.br/?s=",
+        "FilmeB": "https://www.filmeb.com.br/?s="
     }
     noticias_filtradas = {}
     
     agora = datetime.now()
-    # Lógica dinâmica: Segunda-feira (0) busca 72h, outros dias 24h
     horas_atras = 72 if agora.weekday() == 0 else 24
-    limite_periodo = agora - timedelta(hours=horas_atras)
+    limite_periodo = (agora - timedelta(hours=horas_atras)).replace(hour=0, minute=0, second=0, microsecond=0)
     
     print(f"Iniciando busca. Janela: {horas_atras} horas.")
-    # Isso faz com que o limite seja o início do dia (00:00) de 24h ou 72h atrás
-    limite_periodo = limite_periodo.replace(hour=0, minute=0, second=0, microsecond=0)
-    headers = {'User-Agent': 'Mozilla/5.0'}
+    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'}
 
     for nome_fonte, url_base in fontes.items():
         for termo in termos:
             termo_url = termo.replace(' ', '+').replace('"', '')
             try:
+                # O bloco abaixo deve estar indentado para dentro do 'try'
                 res = requests.get(f"{url_base}{termo_url}", headers=headers, timeout=15)
                 soup = BeautifulSoup(res.text, 'html.parser')
-                links = soup.select('h2.entry-title a, h3.entry-title a')[:3]
+                
+                # 1. Seleção dos links por fonte
+                if "filmeb" in url_base:
+                    links = soup.select('div.noticias-lista h3 a, .post-title a')[:3]
+                elif "exibidor" in url_base:
+                    links = soup.select('.noticia-item h2 a, .noticias-lista a')[:3]
+                else:
+                    links = soup.select('h2.entry-title a, h3.entry-title a')[:3]
 
+                # 2. O loop de links deve ficar fora dos 'ifs' para processar todas as fontes
                 for link in links:
                     url_artigo = link['href']
-                    logging.info(f"Termo: [{termo}] | Link capturado: {url_artigo}") # LOG AQUI
+                    logging.info(f"Termo: [{termo}] | Link capturado: {url_artigo}")
                     
                     if url_artigo not in noticias_filtradas:
                         res_art = requests.get(url_artigo, headers=headers, timeout=10)
                         soup_art = BeautifulSoup(res_art.text, 'html.parser')
                         data_pub = extrair_data(soup_art)
 
-                        # Corrigido: usando limite_periodo (dinâmico) em vez de limite_24h
                         if data_pub and data_pub >= limite_periodo:
                             paragrafos = soup_art.find_all('p')
                             noticias_filtradas[url_artigo] = {
@@ -90,11 +95,13 @@ def buscar_clipping_inteligente(termos):
                                 "texto": " ".join([p.text for p in paragrafos[:4]])
                             }
                         else:
-                            # O 'else' precisa estar alinhado com o 'if'
-                            # E a variável data_pub mostrará por que falhou
                             logging.warning(f"Link descartado por DATA ({data_pub}): {url_artigo}")
+                
                 time.sleep(0.5)
-            except: continue
+            except Exception as e:
+                logging.error(f"Erro ao buscar na fonte {nome_fonte}: {e}")
+                continue
+
     return noticias_filtradas
 
 def processar_resumos_batch(dict_noticias):
