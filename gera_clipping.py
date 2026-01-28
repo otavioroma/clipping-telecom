@@ -23,14 +23,12 @@ client = genai.Client(api_key=api_key)
 # --- FUNÇÕES DE SUPORTE ---
 
 def carregar_lista(nome_arquivo):
-    """Lê arquivos .lista e retorna uma lista de strings limpas."""
     if os.path.exists(nome_arquivo):
         with open(nome_arquivo, 'r', encoding='utf-8') as f:
             return [linha.strip() for linha in f if linha.strip()]
     return []
 
 def extrair_data(soup_artigo):
-    """Tenta localizar a data de publicação no HTML da notícia."""
     data_tag = soup_artigo.find('meta', property='article:published_time')
     if data_tag:
         return datetime.fromisoformat(data_tag['content'].split('T')[0])
@@ -41,22 +39,20 @@ def extrair_data(soup_artigo):
 
 def formatar_resumo_telecom(texto_retornado_ia):
     """Formata o texto da IA em blocos <div> para garantir que o Outlook respeite as quebras de linha."""
+    if not texto_retornado_ia: return ""
     linhas = texto_retornado_ia.strip().split('\n')
-    if not linhas: return ""
-
     linhas_finalizadas = []
+    
     for linha in linhas:
         linha = linha.strip()
-        if not linha or linha.upper().startswith("TÍTULO:"):
+        if not linha or any(x in linha.upper() for x in ["TÍTULO:", "RESUMO:"]):
             continue
 
         substituicoes = {
-            "1. Ação:": "<strong>Ação:</strong>",
-            "2. Impacto:": "<strong>Impacto:</strong>",
-            "3. Valores:": "<strong>Números:</strong>",
             "Ação:": "<strong>Ação:</strong>",
             "Impacto:": "<strong>Impacto:</strong>",
-            "Valores:": "<strong>Números:</strong>"
+            "Valores:": "<strong>Números:</strong>",
+            "Números:": "<strong>Números:</strong>"
         }
         
         encontrou_topico = False
@@ -112,8 +108,7 @@ def buscar_clipping_inteligente(termos_telecom, termos_cinema):
                     for link in links:
                         url_artigo = link['href']
                         blacklist = ['quem-somos', 'anuncie', 'contato', 'expediente', 'politica-de-privacidade']
-                        if any(sujo in url_artigo.lower() for sujo in blacklist):
-                            continue
+                        if any(sujo in url_artigo.lower() for sujo in blacklist): continue
 
                         if url_artigo not in noticias_filtradas:
                             res_art = requests.get(url_artigo, headers=headers, timeout=10)
@@ -122,12 +117,14 @@ def buscar_clipping_inteligente(termos_telecom, termos_cinema):
 
                             if data_pub and data_pub >= limite_periodo:
                                 paragrafos = soup_art.find_all('p')
-                                noticias_filtradas[url_artigo] = {
-                                    "titulo": link.get_text().strip(),
-                                    "fonte": nome_fonte,
-                                    "categoria": categoria,
-                                    "texto": " ".join([p.text for p in paragrafos[:4]])
-                                }
+                                texto_extraido = " ".join([p.text for p in paragrafos[:5]])
+                                if len(texto_extraido) > 100:
+                                    noticias_filtradas[url_artigo] = {
+                                        "titulo": link.get_text().strip(),
+                                        "fonte": nome_fonte,
+                                        "categoria": categoria,
+                                        "texto": texto_extraido
+                                    }
                     time.sleep(0.5)
                 except Exception as e:
                     logging.error(f"Erro na fonte {nome_fonte}: {e}")
@@ -139,39 +136,44 @@ def buscar_clipping_inteligente(termos_telecom, termos_cinema):
 # --- PROCESSAMENTO IA ---
 
 def processar_resumos_batch(dict_noticias):
-    if not dict_noticias: return None
+    if not dict_noticias: return {}
     
     prompt = (
-        "Você é um Analista de Mercado especializado em Telecomunicações e Indústria Audiovisual.\n"
-        "Sua tarefa é resumir notícias sobre infraestrutura digital, conectividade, mercado de cinema e exibição.\n\n"
-        "REGRAS CRÍTICAS:\n"
-        "1. ACEITE apenas notícias sobre: operadoras, data centers, políticas de telecom, mercado exibidor, "
-        "produção audiovisual, streaming ou tecnologias de projeção/som. Caso contrário, responda 'DESCARTAR'.\n"
-        "2. Se relevante, resuma em: (Ação | Impacto | Valores).\n"
-        "3. Não utilize negrito (**) ou Markdown. Use apenas texto puro.\n"
-        "4. Separe os resumos com '---'.\n\n"
+        "Você é um Analista de Mercado Sênior em Telecomunicações e Audiovisual.\n"
+        "Sua tarefa é criar resumos técnicos baseados no conteúdo fornecido.\n\n"
+        "REGRAS OBRIGATÓRIAS:\n"
+        "1. Para cada notícia, gere um resumo com exatamente 3 campos: Ação:, Impacto: e Valores:.\n"
+        "2. IMPORTANTE: Use o separador '---' (três hífens) estritamente entre os resumos de notícias diferentes.\n"
+        "3. Se a notícia for irrelevante ao setor de infraestrutura ou cinema, escreva apenas 'DESCARTAR' para aquela notícia.\n"
+        "4. Não use negritos ou markdown.\n\n"
     )
     
     links_ordenados = list(dict_noticias.keys())
     for url in links_ordenados:
-        prompt += f"TÍTULO: {dict_noticias[url]['titulo']}\nCONTEÚDO: {dict_noticias[url]['texto']}\n\n---\n\n"
+        prompt += f"URL: {url}\nTÍTULO: {dict_noticias[url]['titulo']}\nCONTEÚDO: {dict_noticias[url]['texto']}\n\n---\n\n"
 
     try:
         response = client.models.generate_content(model="gemini-2.0-flash", contents=prompt)
-        resumos = response.text.split("---")
+        texto_ia = response.text
+        logging.info(f"RESPOSTA BRUTA DA IA RECEBIDA. Tamanho: {len(texto_ia)}")
+        
+        # Split e limpeza de resumos vazios
+        resumos = [r.strip() for r in texto_ia.split("---") if len(r.strip()) > 5]
         
         finalizadas = {}
         for i, resumo_bruto in enumerate(resumos):
             if i < len(links_ordenados):
                 url = links_ordenados[i]
-                conteudo = resumo_bruto.strip()
-                if "DESCARTAR" not in conteudo.upper():
-                    dict_noticias[url]['resumo'] = formatar_resumo_telecom(conteudo)
+                if "DESCARTAR" not in resumo_bruto.upper():
+                    dict_noticias[url]['resumo'] = formatar_resumo_telecom(resumo_bruto)
                     finalizadas[url] = dict_noticias[url]
+                else:
+                    logging.warning(f"IA descartou: {url}")
+        
         return finalizadas
     except Exception as e:
-        logging.error(f"Erro IA: {e}")
-        return dict_noticias
+        logging.error(f"Erro crítico no Gemini: {e}")
+        return {}
 
 # --- ENVIO DE E-MAIL ---
 
@@ -195,6 +197,7 @@ def enviar_email_html(lista_noticias, destinatarios):
         if noticias_cat:
             html_corpo += f'<h3 style="background-color: #0056b3; color: #ffffff; padding: 10px; margin-top: 30px; border-radius: 4px;">{titulo_cat}</h3>'
             for url, item in noticias_cat.items():
+                resumo_html = item.get('resumo', '<i>Resumo não gerado. Verifique os logs.</i>')
                 html_corpo += f"""
                 <div style="margin-bottom: 25px; padding: 15px; border-left: 5px solid #0056b3; background: #f9f9f9;">
                     <div style="margin-bottom: 10px;">
@@ -202,7 +205,7 @@ def enviar_email_html(lista_noticias, destinatarios):
                         <a href="{url}" style="color: #0056b3; text-decoration: none; font-weight: bold;">{item['titulo']}</a>
                     </div>
                     <div style="background: #fff; padding: 12px; border: 1px solid #ddd; border-radius: 4px;">
-                        {item.get('resumo', 'Sem resumo disponível.')}
+                        {resumo_html}
                     </div>
                 </div>"""
 
@@ -214,7 +217,7 @@ def enviar_email_html(lista_noticias, destinatarios):
             smtp.login(email_user, email_pass)
             smtp.send_message(msg)
         print("E-mail enviado com sucesso!")
-    except Exception as e: logging.error(f"Erro envio: {e}")
+    except Exception as e: logging.error(f"Erro no envio do e-mail: {e}")
 
 # --- EXECUÇÃO ---
 
@@ -226,6 +229,9 @@ if termos_telecom or termos_cinema:
     noticias = buscar_clipping_inteligente(termos_telecom, termos_cinema)
     if noticias:
         noticias_com_resumo = processar_resumos_batch(noticias)
-        enviar_email_html(noticias_com_resumo, emails)
+        if noticias_com_resumo:
+            enviar_email_html(noticias_com_resumo, emails)
+        else:
+            print("Notícias encontradas, mas nenhuma passou pelo filtro da IA.")
     else:
-        print("Nenhuma notícia nova encontrada.")
+        print("Nenhuma notícia nova encontrada no período.")
