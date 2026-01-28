@@ -127,8 +127,8 @@ def processar_resumos_batch(dict_noticias):
                 
                 # Se a IA não descartou, adicionamos ao dicionário final
                 if "DESCARTAR" not in conteudo.upper():
-                    resumo_limpo = formatar_resumo_telecom(conteudo) #formata o HTML antes de salvar
-                    dict_noticias[url]['resumo'] = conteudo.replace("\n", "<br>")
+                    resumo_formatado = formatar_resumo_telecom(conteudo) #formata o HTML antes de salvar
+                    dict_noticias[url]['resumo'] = resumo_formatado
                     noticias_filtradas[url] = dict_noticias[url]
                 else:
                     logging.warning(f"IA descartou o conteúdo por irrelevância: {url}") # LOG AQUI
@@ -181,19 +181,36 @@ def enviar_email_html(lista_noticias, destinatarios):
     except Exception as e: print(f"Erro no envio: {e}")
 
 def formatar_resumo_telecom(texto_retornado_ia):
-    # Usamos <strong> para negrito e <br> para quebra de linha no e-mail
-    mapeamento = {
-        "TÍTULO:": "<strong>TÍTULO:</strong>",
-        "1. Ação:": "<br><strong>1. Ação:</strong>",
-        "2. Impacto:": "<br><strong>2. Impacto:</strong>",
-        "3. Valores:": "<br><strong>3. Valores:</strong>"
-    }
+    # 1. Divide o texto em linhas para processar cada campo individualmente
+    # Isso resolve o problema de a IA mandar tudo em um bloco só
+    linhas = texto_retornado_ia.strip().split('\n')
     
-    texto_formatado = texto_retornado_ia
-    for original, formatado in mapeamento.items():
-        texto_formatado = texto_formatado.replace(original, formatado)
-    
-    return texto_formatado.strip()
+    if not linhas:
+        return ""
+
+    linhas_finalizadas = []
+
+    # 2. Trata a primeira linha como TÍTULO obrigatoriamente
+    # Removemos "TÍTULO:" ou "Título:" caso a IA tenha escrito, para não duplicar
+    primeira_linha = linhas[0].replace("TÍTULO:", "").replace("Título:", "").strip()
+    linhas_finalizadas.append(f"<strong>TÍTULO: {primeira_linha}</strong>")
+
+    # 3. Processa as demais linhas procurando os tópicos numerados
+    for linha in linhas[1:]:
+        linha = linha.strip()
+        if not linha:
+            continue
+        
+        # Substitui os rótulos garantindo o uso de <strong> para o Outlook
+        linha = linha.replace("1. Ação:", "<strong>1. Ação:</strong>")
+        linha = linha.replace("2. Impacto:", "<strong>2. Impacto:</strong>")
+        linha = linha.replace("3. Valores:", "<strong>3. Valores:</strong>")
+        
+        linhas_finalizadas.append(linha)
+
+    # 4. Junta tudo com <br>. No Outlook, o <br> funciona melhor para manter o texto compacto
+    # mas estruturado dentro de caixas de texto (como a do seu print).
+    return "<br>".join(linhas_finalizadas)
     
 # --- Execução Principal ---
 
