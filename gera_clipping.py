@@ -165,9 +165,13 @@ def enviar_email_html(lista_noticias, destinatarios):
         
         html_corpo += f"""
         <div style="margin-bottom: 25px; padding: 15px; border-left: 5px solid #0056b3; background: #f9f9f9;">
-            <strong>[{fonte}]</strong><br>
-            <h3 style="margin: 5px 0;"><a href="{url}" style="color: #0056b3; text-decoration: none;">{titulo}</a></h3>
-            <div style="background: #fff; padding: 10px; border: 1px solid #ddd; border-radius: 4px;">{resumo}</div>
+            <div style="margin-bottom: 10px;">
+                <span style="font-weight: bold; color: #333;">[{fonte}]</span>
+                <a href="{url}" style="color: #0056b3; text-decoration: none; font-weight: bold; font-size: 16px;">{titulo}</a>
+            </div>
+            <div style="background: #fff; padding: 12px; border: 1px solid #ddd; border-radius: 4px; font-family: Arial, sans-serif;">
+                {resumo}
+            </div>
         </div>
         """
     html_corpo += "</body></html>"
@@ -181,36 +185,43 @@ def enviar_email_html(lista_noticias, destinatarios):
     except Exception as e: print(f"Erro no envio: {e}")
 
 def formatar_resumo_telecom(texto_retornado_ia):
-    # 1. Divide o texto em linhas para processar cada campo individualmente
-    # Isso resolve o problema de a IA mandar tudo em um bloco só
+    # Divide o texto em linhas para processamento individual
     linhas = texto_retornado_ia.strip().split('\n')
-    
-    if not linhas:
-        return ""
+    if not linhas: return ""
 
     linhas_finalizadas = []
-
-    # 2. Trata a primeira linha como TÍTULO obrigatoriamente
-    # Removemos "TÍTULO:" ou "Título:" caso a IA tenha escrito, para não duplicar
-    primeira_linha = linhas[0].replace("TÍTULO:", "").replace("Título:", "").strip()
-    linhas_finalizadas.append(f"<strong>TÍTULO: {primeira_linha}</strong>")
-
-    # 3. Processa as demais linhas procurando os tópicos numerados
-    for linha in linhas[1:]:
+    
+    for linha in linhas:
         linha = linha.strip()
-        if not linha:
+        if not linha: continue
+        
+        # Ignora a linha que contém o título repetido
+        if linha.upper().startswith("TÍTULO:"):
             continue
-        
-        # Substitui os rótulos garantindo o uso de <strong> para o Outlook
-        linha = linha.replace("1. Ação:", "<strong>1. Ação:</strong>")
-        linha = linha.replace("2. Impacto:", "<strong>2. Impacto:</strong>")
-        linha = linha.replace("3. Valores:", "<strong>3. Valores:</strong>")
-        
-        linhas_finalizadas.append(linha)
 
-    # 4. Junta tudo com <br>. No Outlook, o <br> funciona melhor para manter o texto compacto
-    # mas estruturado dentro de caixas de texto (como a do seu print).
-    return "<br>".join(linhas_finalizadas)
+        # Dicionário de limpeza e formatação dos rótulos
+        substituicoes = {
+            "1. Ação:": "<strong>Ação:</strong>",
+            "2. Impacto:": "<strong>Impacto:</strong>",
+            "3. Valores:": "<strong>Valores:</strong>",
+            "Ação:": "<strong>Ação:</strong>",
+            "Impacto:": "<strong>Impacto:</strong>",
+            "Valores:": "<strong>Valores:</strong>"
+        }
+        
+        encontrou_topico = False
+        for original, negrito in substituicoes.items():
+            if original in linha:
+                linha = linha.replace(original, negrito)
+                encontrou_topico = True
+                break
+        
+        # Se for um tópico (Ação, Impacto ou Valores), encapsula em um <div>
+        # O style margin-bottom garante o respiro visual entre as linhas
+        if encontrou_topico:
+            linhas_finalizadas.append(f'<div style="margin-bottom: 8px; display: block;">{linha}</div>')
+
+    return "".join(linhas_finalizadas)
     
 # --- Execução Principal ---
 
