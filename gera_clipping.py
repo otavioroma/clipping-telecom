@@ -102,10 +102,11 @@ def processar_resumos_batch(dict_noticias):
         "Você é um Analista de Telecomunicações e Tecnologia da Informação."
         "Sua tarefa é resumir notícias do setor de infraestrutura digital e telecom.\n\n"
         "REGRAS CRÍTICAS:\n"
-        "1. Se a notícia NÃO for sobre telecomunicações, Tecnologia de informaçãoI, datacenters, operadoras ou políticas do setor, "
+        "1. Se a notícia NÃO for sobre telecomunicações, Tecnologia de informação, datacenters, operadoras ou políticas do setor, "
         "responda apenas a palavra 'DESCARTAR' para essa notícia.\n"
         "2. Se for relevante, resuma em 3 pontos: (1. Ação | 2. Impacto | 3. Valores).\n"
-        "3. Separe os resumos de cada notícia com '---'.\n\n"
+        "3. RESTRIÇÃO DE FORMATAÇÃO: Não utilize negrito (**), itálico ou qualquer marcação Markdown nos títulos ou no corpo do texto. Escreva apenas em texto puro.\n"
+        "4. Separe os resumos de cada notícia com '---'.\n\n"
     )
     
     links_ordenados = list(dict_noticias.keys())
