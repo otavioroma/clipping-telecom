@@ -5,7 +5,7 @@ import time, os, smtplib, logging, sys
 from datetime import datetime, timedelta
 from email.message import EmailMessage
 
-# Configuração de Log otimizada para monitoramento no GitHub Actions
+# Configuração de Log
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
@@ -27,8 +27,7 @@ client = genai.Client(api_key=api_key)
 def carregar_lista(nome_arquivo):
     if os.path.exists(nome_arquivo):
         with open(nome_arquivo, 'r', encoding='utf-8') as f:
-            lista = [linha.strip() for linha in f if linha.strip()]
-            return lista
+            return [linha.strip() for linha in f if linha.strip()]
     return []
 
 def extrair_data(soup_artigo):
@@ -39,7 +38,9 @@ def extrair_data(soup_artigo):
     # Fallback para tag time
     time_tag = soup_artigo.find('time')
     if time_tag and time_tag.get('datetime'):
-        return datetime.fromisoformat(time_tag['datetime'].split('T')[0])
+        try:
+            return datetime.fromisoformat(time_tag['datetime'].split('T')[0])
+        except: pass
     return None
 
 def formatar_resumo_html(texto_ia):
@@ -94,7 +95,6 @@ def buscar_clipping_inteligente(termos_telecom, termos_cinema):
                     res = requests.get(f"{url_base}{termo.replace(' ', '+')}", headers=headers, timeout=15)
                     soup = BeautifulSoup(res.text, 'html.parser')
                     
-                    # Seletores por fonte
                     if "filmeb.com.br" in url_base:
                         links = soup.select('div.noticias-lista h3 a, h3.post-title a, .views-field-title a')[:5]
                     elif "exibidor" in url_base:
@@ -104,8 +104,6 @@ def buscar_clipping_inteligente(termos_telecom, termos_cinema):
 
                     for link in links:
                         url_artigo = link['href']
-                        
-                        # TRATAMENTO PARA FILMEB E OUTROS: Reconstrução de URL Relativa
                         if url_artigo.startswith('/'):
                             dominio_base = "https://www.filmeb.com.br" if "filmeb" in url_base else "https://" + url_base.split('/')[2]
                             url_artigo = dominio_base + url_artigo
@@ -116,13 +114,10 @@ def buscar_clipping_inteligente(termos_telecom, termos_cinema):
                         if url_artigo not in noticias_filtradas:
                             res_art = requests.get(url_artigo, headers=headers, timeout=10)
                             soup_art = BeautifulSoup(res_art.text, 'html.parser')
-                            
-                            # Captura de data (com tolerância para FilmeB)
                             data_pub = extrair_data(soup_art)
                             
-                            # Se não achou data mas é FilmeB, tentamos processar mesmo assim para validar
-                            if (data_pub and data_pub >= limite_periodo) or ("filmeb" in url_base):
-                                # Busca o corpo da notícia (classe específica FilmeB ou parágrafos gerais)
+                            # CORREÇÃO: Removida a exceção para FilmeB. Agora a data é obrigatória e validada.
+                            if data_pub and data_pub >= limite_periodo:
                                 corpo = soup_art.select_one('.field-name-body')
                                 if corpo:
                                     texto = corpo.get_text(separator=' ', strip=True)
@@ -145,7 +140,7 @@ def buscar_clipping_inteligente(termos_telecom, termos_cinema):
     executar_varredura(fontes_cinema, termos_cinema, "CINEMA")
     return noticias_filtradas
 
-# --- IA E E-MAIL (Simplificados para estabilidade) ---
+# --- IA E E-MAIL ---
 
 def processar_resumos_batch(dict_noticias):
     if not dict_noticias: return {}
@@ -169,8 +164,12 @@ def processar_resumos_batch(dict_noticias):
         for i, resumo in enumerate(resumos):
             if i < len(links):
                 url = links[i]
-                dict_noticias[url]['resumo'] = formatar_resumo_html(resumo)
-                finalizadas[url] = dict_noticias[url]
+                # CORREÇÃO: Agora só adiciona ao dicionário final se NÃO houver 'DESCARTAR'
+                if "DESCARTAR" not in resumo.upper():
+                    dict_noticias[url]['resumo'] = formatar_resumo_html(resumo)
+                    finalizadas[url] = dict_noticias[url]
+                else:
+                    logging.info(f"IA descartou a notícia: {url}")
         return finalizadas
     except Exception as e:
         logging.error(f"Erro Gemini: {e}")
@@ -211,6 +210,9 @@ if __name__ == "__main__":
         resultado = buscar_clipping_inteligente(t_telecom, t_cinema)
         if resultado:
             final = processar_resumos_batch(resultado)
-            enviar_email(final, emails)
+            if final:
+                enviar_email(final, emails)
+            else:
+                logging.info("Nenhuma notícia aprovada pela IA hoje.")
         else:
             logging.info("Nada encontrado hoje.")
