@@ -31,24 +31,39 @@ def carregar_lista(nome_arquivo):
     return []
 
 def extrair_data(soup_artigo):
-    # 1. Metadados padrão
+    # 1. Tenta metadados padrão (SEO)
     data_tag = soup_artigo.find('meta', property='article:published_time')
     if data_tag:
         return datetime.fromisoformat(data_tag['content'].split('T')[0])
     
-    # 2. Tag time
+    # 2. Tenta a tag <time> (Padrão HTML5)
     time_tag = soup_artigo.find('time')
     if time_tag and time_tag.get('datetime'):
         try:
             return datetime.fromisoformat(time_tag['datetime'].split('T')[0])
         except: pass
 
-    # 3. Busca por padrões de data no texto (Ex: 29/01/2026) - Comum no FilmeB/Exibidor
-    texto_pagina = soup_artigo.get_text()
-    padrao_data = re.search(r'(\d{2})/(\d{2})/(\d{4})', texto_pagina)
-    if padrao_data:
+    # 3. ESPECÍFICO FILMEB/EXIBIDOR: Busca em classes comuns de data
+    # No FilmeB, a data costuma ficar em classes como .post-date ou .date
+    classes_data = ['.post-date', '.date', '.data-post', '.published']
+    for classe in classes_data:
+        tag_data = soup_artigo.select_one(classe)
+        if tag_data:
+            texto_data = tag_data.get_text(strip=True)
+            # Tenta encontrar algo como 29/01/2026 no texto da classe
+            match = re.search(r'(\d{2})/(\d{2})/(\d{4})', texto_data)
+            if match:
+                try:
+                    return datetime.strptime(match.group(0), '%d/%m/%Y')
+                except: pass
+
+    # 4. ÚLTIMO RECURSO: Varre os primeiros 500 caracteres do corpo em busca de uma data
+    # Útil quando a data está "solta" no topo da matéria
+    texto_topo = soup_artigo.get_text()[:500]
+    match_geral = re.search(r'(\d{2})/(\d{2})/(\d{4})', texto_topo)
+    if match_geral:
         try:
-            return datetime.strptime(padrao_data.group(0), '%d/%m/%Y')
+            return datetime.strptime(match_geral.group(0), '%d/%m/%Y')
         except: pass
         
     return None
