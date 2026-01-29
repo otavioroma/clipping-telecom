@@ -104,7 +104,8 @@ def buscar_clipping_inteligente(termos_telecom, termos_cinema):
                     if "filmeb" in url_base:
                         links = soup.select('div.noticias-lista h3 a, h3.post-title a, .views-field-title a')[:5]
                     elif "exibidor" in url_base:
-                        links = soup.select('.noticia-item h2 a, .noticias-lista a')[:3]
+                        # Seletores atualizados para a busca do Exibidor
+                        links = soup.select('section.lista-noticias a, .box-noticia a, .grid-noticias a')[:5]
                     else:
                         links = soup.select('h2.entry-title a, h3.entry-title a, #main h2 a')[:3]
 
