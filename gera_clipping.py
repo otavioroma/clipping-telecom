@@ -86,7 +86,7 @@ def formatar_resumo_html(texto_ia):
 
 def buscar_clipping_inteligente(termos_telecom, termos_cinema):
     fontes_telecom = {"TeleTime": "https://teletime.com.br/?s=", "TeleSíntese": "https://telesintese.com.br/?s=", "MobileTime": "https://www.mobiletime.com.br/?s="}
-    fontes_cinema = {"TelaViva": "https://telaviva.com.br/?s=", "PortalExibidor": "https://www.exibidor.com.br/noticias/mercado/?s=", "FilmeB": "https://www.filmeb.com.br/noticias?s="}
+    fontes_cinema = {"TelaViva": "https://telaviva.com.br/?s=", "PortalExibidor": "https://www.exibidor.com.br/noticias/?s=", "FilmeB": "https://www.filmeb.com.br/noticias?s="}
 
     noticias_filtradas = {}
     agora = datetime.now()
