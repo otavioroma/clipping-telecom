@@ -24,4 +24,4 @@ jobs:
           pip install requests beautifulsoup4
 
       - name: Executar script de teste
-        run: python seu_arquivo.py # Substitua pelo nome real do seu arquivo .py
+        run: python teste.code.py # Substitua pelo nome real do seu arquivo .py
