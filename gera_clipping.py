@@ -5,13 +5,13 @@ import time, os, smtplib, logging, sys
 from datetime import datetime, timedelta
 from email.message import EmailMessage
 
-# Configura o log para console e arquivo simultaneamente
+# Configuração de Log para console e arquivo (essencial para GitHub Actions)
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
         logging.FileHandler("clipping.log", encoding='utf-8'),
-        logging.StreamHandler(sys.stdout) # Força a saída no console do GitHub
+        logging.StreamHandler(sys.stdout)
     ]
 )
 
@@ -28,7 +28,7 @@ def carregar_lista(nome_arquivo):
     if os.path.exists(nome_arquivo):
         with open(nome_arquivo, 'r', encoding='utf-8') as f:
             lista = [linha.strip() for linha in f if linha.strip()]
-            logging.info(f"Arquivo {nome_arquivo} carregado com {len(lista)} itens.")
+            logging.info(f"Arquivo {nome_arquivo} carregado: {len(lista)} itens.")
             return lista
     logging.warning(f"Arquivo {nome_arquivo} não encontrado.")
     return []
@@ -47,24 +47,44 @@ def formatar_resumo_telecom(texto_retornado_ia):
     linhas = texto_retornado_ia.strip().split('\n')
     linhas_finalizadas = []
     
+    substituicoes = {
+        "Ação:": "<strong>Ação:</strong>", 
+        "Impacto:": "<strong>Impacto:</strong>", 
+        "Valores:": "<strong>Números:</strong>", 
+        "Números:": "<strong>Números:</strong>"
+    }
+
     for linha in linhas:
         linha = linha.strip()
         if not linha or any(x in linha.upper() for x in ["TÍTULO:", "RESUMO:"]):
             continue
-        substituicoes = {"Ação:": "<strong>Ação:</strong>", "Impacto:": "<strong>Impacto:</strong>", "Valores:": "<strong>Números:</strong>", "Números:": "<strong>Números:</strong>"}
+        
         encontrou_topico = False
         for original, negrito in substituicoes.items():
             if original in linha:
                 linha = linha.replace(original, negrito)
                 encontrou_topico = True
                 break
+        
         if encontrou_topico:
             linhas_finalizadas.append(f'<div style="margin-bottom: 8px; display: block;">{linha}</div>')
+            
     return "".join(linhas_finalizadas)
 
+# --- FUNÇÃO DE BUSCA ---
+
 def buscar_clipping_inteligente(termos_telecom, termos_cinema):
-    fontes_telecom = {"TeleTime": "https://teletime.com.br/?s=", "TeleSíntese": "https://telesintese.com.br/?s=", "MobileTime": "https://www.mobiletime.com.br/?s="}
-    fontes_cinema = {"TelaViva": "https://telaviva.com.br/?s=", "PortalExibidor": "https://www.exibidor.com.br/?s=", "FilmeB": "https://www.filmeb.com.br/?s="}
+    fontes_telecom = {
+        "TeleTime": "https://teletime.com.br/?s=", 
+        "TeleSíntese": "https://telesintese.com.br/?s=", 
+        "MobileTime": "https://www.mobiletime.com.br/?s="
+    }
+    fontes_cinema = {
+        "TelaViva": "https://telaviva.com.br/?s=",
+        "PortalExibidor": "https://www.exibidor.com.br/?s=",
+        "FilmeB": "https://www.filmeb.com.br/noticias?s=" # URL ATUALIZADA
+    }
+
     noticias_filtradas = {}
     agora = datetime.now()
     horas_atras = 72 if agora.weekday() == 0 else 24
@@ -77,38 +97,61 @@ def buscar_clipping_inteligente(termos_telecom, termos_cinema):
                 try:
                     res = requests.get(f"{url_base}{termo.replace(' ', '+')}", headers=headers, timeout=15)
                     soup = BeautifulSoup(res.text, 'html.parser')
-                    if "filmeb" in url_base: links = soup.select('div.noticias-lista h3 a, .post-title a')[:3]
-                    elif "exibidor" in url_base: links = soup.select('.noticia-item h2 a, .noticias-lista a')[:3]
-                    elif "telaviva" in url_base: links = soup.select('#main h2.entry-title a, #primary h2.entry-title a')[:5]
-                    else: links = soup.select('h2.entry-title a, h3.entry-title a')[:3]
+                    
+                    # Seletores Refinados
+                    if "filmeb.com.br" in url_base:
+                        links = soup.select('div.noticias-lista h3 a, h3.post-title a, .views-field-title a')[:3]
+                    elif "exibidor" in url_base:
+                        links = soup.select('.noticia-item h2 a, .noticias-lista a')[:3]
+                    elif "telaviva" in url_base:
+                        links = soup.select('#main h2.entry-title a, #primary h2.entry-title a')[:5]
+                    else:
+                        links = soup.select('h2.entry-title a, h3.entry-title a')[:3]
 
                     for link in links:
                         url_artigo = link['href']
                         if any(sujo in url_artigo.lower() for sujo in ['quem-somos', 'anuncie', 'contato']): continue
+                        
                         if url_artigo not in noticias_filtradas:
                             res_art = requests.get(url_artigo, headers=headers, timeout=10)
                             soup_art = BeautifulSoup(res_art.text, 'html.parser')
                             data_pub = extrair_data(soup_art)
+                            
                             if data_pub and data_pub >= limite_periodo:
                                 p = soup_art.find_all('p')
                                 texto = " ".join([item.text for item in p[:5]])
                                 if len(texto) > 100:
-                                    noticias_filtradas[url_artigo] = {"titulo": link.get_text().strip(), "fonte": nome_fonte, "categoria": categoria, "texto": texto}
-                except Exception as e: logging.error(f"Erro na fonte {nome_fonte}: {e}")
+                                    noticias_filtradas[url_artigo] = {
+                                        "titulo": link.get_text().strip(), 
+                                        "fonte": nome_fonte, 
+                                        "categoria": categoria, 
+                                        "texto": texto
+                                    }
+                except Exception as e:
+                    logging.error(f"Erro na fonte {nome_fonte} para o termo {termo}: {e}")
     
     executar_varredura(fontes_telecom, termos_telecom, "TELECOM")
     executar_varredura(fontes_cinema, termos_cinema, "CINEMA")
     return noticias_filtradas
 
+# --- PROCESSAMENTO IA ---
+
 def processar_resumos_batch(dict_noticias):
     if not dict_noticias: return {}
-    prompt = "Você é um Analista Sênior. Gere resumos com Ação:, Impacto: e Valores: para cada notícia, separando-os por '---'. Se irrelevante, escreva DESCARTAR.\n\n"
+    prompt = (
+        "Você é um Analista de Mercado Sênior em Telecomunicações e Audiovisual.\n"
+        "Sua tarefa é criar resumos técnicos com 3 campos: Ação:, Impacto: e Valores:.\n"
+        "Use '---' estritamente entre os resumos de notícias diferentes. Se irrelevante, escreva DESCARTAR.\n\n"
+    )
+    
     links = list(dict_noticias.keys())
     for url in links:
         prompt += f"TÍTULO: {dict_noticias[url]['titulo']}\nCONTEÚDO: {dict_noticias[url]['texto']}\n\n---\n\n"
     
     try:
         response = client.models.generate_content(model="gemini-2.0-flash", contents=prompt)
+        logging.info(f"IA processou {len(links)} notícias.")
+        
         resumos = [r.strip() for r in response.text.split("---") if len(r.strip()) > 5]
         finalizadas = {}
         for i, resumo in enumerate(resumos):
@@ -119,8 +162,10 @@ def processar_resumos_batch(dict_noticias):
                     finalizadas[url] = dict_noticias[url]
         return finalizadas
     except Exception as e:
-        logging.error(f"Erro IA: {e}")
+        logging.error(f"Erro no processamento da IA: {e}")
         return {}
+
+# --- ENVIO DE E-MAIL ---
 
 def enviar_email_html(lista_noticias, destinatarios):
     if not destinatarios: return
@@ -129,15 +174,18 @@ def enviar_email_html(lista_noticias, destinatarios):
     msg['From'] = email_user
     msg['To'] = ", ".join(destinatarios)
     
-    html = '<html><body style="font-family: Arial;"><h2>Relatório Diário</h2>'
+    html = '<html><body style="font-family: Arial, sans-serif; color: #333;">'
+    html += '<h2 style="color: #0056b3; border-bottom: 2px solid #0056b3; padding-bottom: 10px;">Relatório Diário</h2>'
+    
     for cat_chave, cat_nome in [("TELECOM", "NOTÍCIAS TELECOM"), ("CINEMA", "NOTÍCIAS AUDIOVISUAL")]:
         noticias_cat = {u: i for u, i in lista_noticias.items() if i.get('categoria') == cat_chave}
         if noticias_cat:
-            html += f'<h3 style="background:#0056b3;color:#fff;padding:10px;">{cat_nome}</h3>'
+            html += f'<h3 style="background:#0056b3;color:#fff;padding:10px;border-radius:4px;">{cat_nome}</h3>'
             for url, item in noticias_cat.items():
-                html += f'<div style="margin-bottom:20px;padding:10px;border-left:5px solid #0056b3;background:#f9f9f9;">'
-                html += f'<b>[{item["fonte"]}]</b> <a href="{url}">{item["titulo"]}</a><br><br>'
-                html += f'<div>{item.get("resumo", "")}</div></div>'
+                html += f'<div style="margin-bottom:20px;padding:15px;border-left:5px solid #0056b3;background:#f9f9f9;">'
+                html += f'<b>[{item["fonte"]}]</b> <a href="{url}" style="color:#0056b3;text-decoration:none;">{item["titulo"]}</a><br><br>'
+                html += f'<div>{item.get("resumo", "<i>Resumo indisponível.</i>")}</div></div>'
+                
     html += '</body></html>'
     msg.add_alternative(html, subtype='html')
     
@@ -146,25 +194,25 @@ def enviar_email_html(lista_noticias, destinatarios):
         smtp.send_message(msg)
     logging.info("E-mail enviado com sucesso!")
 
-# --- BLOCO DE EXECUÇÃO FINAL ---
+# --- BLOCO PRINCIPAL ---
 if __name__ == "__main__":
-    logging.info("Iniciando Script...")
+    logging.info("Iniciando varredura diária...")
     emails = carregar_lista("email_destino.lista")
     t_telecom = carregar_lista("termos_chave_telecom.lista")
     t_cinema = carregar_lista("termos_chave_cinema.lista")
 
     if not emails:
-        logging.error("Finalizando: Ninguém para receber o e-mail.")
+        logging.error("Finalizando: Nenhum destinatário configurado.")
     elif not t_telecom and not t_cinema:
-        logging.error("Finalizando: Nenhuma palavra-chave encontrada.")
+        logging.error("Finalizando: Nenhuma palavra-chave para busca.")
     else:
         resultado_busca = buscar_clipping_inteligente(t_telecom, t_cinema)
         if resultado_busca:
-            logging.info(f"{len(resultado_busca)} notícias encontradas. Processando IA...")
-            final = processar_resumos_batch(resultado_busca)
-            if final:
-                enviar_email_html(final, emails)
+            logging.info(f"{len(resultado_busca)} potenciais notícias encontradas.")
+            noticias_finais = processar_resumos_batch(resultado_busca)
+            if noticias_finais:
+                enviar_email_html(noticias_finais, emails)
             else:
-                logging.warning("IA descartou todas as notícias.")
+                logging.warning("Todas as notícias foram descartadas pela IA.")
         else:
-            logging.info("Nenhuma notícia nova encontrada.")
+            logging.info("Nenhuma notícia nova detectada nas últimas 24h/72h.")
