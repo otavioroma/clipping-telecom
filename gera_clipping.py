@@ -51,7 +51,6 @@ def formatar_resumo_html(texto_ia):
     substituicoes = {
         "Ação:": "<strong>Ação:</strong>", 
         "Impacto:": "<strong>Impacto:</strong>", 
-        "Valores:": "<strong>Números:</strong>",
         "Números:": "<strong>Números:</strong>"
     }
 
@@ -78,7 +77,7 @@ def buscar_clipping_inteligente(termos_telecom, termos_cinema):
     }
     fontes_cinema = {
         "TelaViva": "https://telaviva.com.br/?s=",
-        "PortalExibidor": "https://www.exibidor.com.br/?s=",
+        "PortalExibidor": "https://www.exibidor.com.br/noticias/mercado/?s=",
         "FilmeB": "https://www.filmeb.com.br/noticias?s="
     }
 
@@ -148,7 +147,7 @@ def processar_resumos_batch(dict_noticias):
         "Atue como um Analista de Mercado Sênior especializado em Telecomunicações e Indústria Audiovisual.\n"
         "Sua tarefa é criar resumos técnicos e aprofundados baseados no conteúdo fornecido.\n\n"
         "REGRAS CRÍTICAS DE EXECUÇÃO:\n"
-        "1. Para cada notícia, gere obrigatoriamente um resumo com 3 campos: Ação:, Impacto: e Valores:.\n"
+        "1. Para cada notícia, gere obrigatoriamente um resumo com 3 campos: Ação:, Impacto: e Números:.\n"
         "2. IMPORTANTE: Utilize o separador '---' (três hífens) estritamente entre os resumos de notícias diferentes.\n"
         "3. Se a notícia for irrelevante ao setor de infraestrutura, telecom, cinema ou tecnologia, responda apenas 'DESCARTAR'.\n"
         "4. Mantenha um tom profissional. Não utilize negritos ou qualquer formatação Markdown.\n\n"
