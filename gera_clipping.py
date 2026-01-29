@@ -190,8 +190,8 @@ def enviar_email(lista_noticias, destinatarios):
     
     with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
         smtp.login(email_user, email_pass)
-        smtp.send_message(smtp.send_message(msg))
-    logging.info("E-mail enviado!")
+        smtp.send_message(msg)
+        logging.info("E-mail enviado!")
 
 if __name__ == "__main__":
     logging.info("Iniciando...")
