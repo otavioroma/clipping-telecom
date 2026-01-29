@@ -149,7 +149,15 @@ def buscar_clipping_inteligente(termos_telecom, termos_cinema):
 
 def processar_resumos_batch(dict_noticias):
     if not dict_noticias: return {}
-    prompt = "Resuma as notícias abaixo em: Ação:, Impacto: e Valores:. Separe por '---'. Se irrelevante, ignore.\n\n"
+    prompt = (
+        "Atue como um Analista de Mercado Sênior especializado em Telecomunicações e Indústria Audiovisual.\n"
+        "Sua tarefa é criar resumos técnicos e aprofundados baseados no conteúdo fornecido.\n\n"
+        "REGRAS CRÍTICAS DE EXECUÇÃO:\n"
+        "1. Para cada notícia, gere obrigatoriamente um resumo com 3 campos: Ação:, Impacto: e Valores:.\n"
+        "2. IMPORTANTE: Utilize o separador '---' (três hífens) estritamente entre os resumos de notícias diferentes.\n"
+        "3. Se a notícia for irrelevante ao setor de infraestrutura, telecom, cinema ou tecnologia, responda apenas 'DESCARTAR'.\n"
+        "4. Mantenha um tom profissional. Não utilize negritos ou qualquer formatação Markdown.\n\n"
+    )
     links = list(dict_noticias.keys())
     for url in links:
         prompt += f"TÍTULO: {dict_noticias[url]['titulo']}\nCONTEÚDO: {dict_noticias[url]['texto']}\n\n---\n\n"
