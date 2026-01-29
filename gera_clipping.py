@@ -31,44 +31,33 @@ def carregar_lista(nome_arquivo):
     return []
 
 def extrair_data(soup_artigo):
-    """Extrai e converte datas, com lógica específica para o formato do FilmeB (ex: 28 jan 26)"""
-    # 1. Tenta metadados padrão primeiro
+    """Extrai e converte datas, com lógica específica para o FilmeB (ex: 28 jan 26)"""
     data_tag = soup_artigo.find('meta', property='article:published_time')
     if data_tag:
         return datetime.fromisoformat(data_tag['content'].split('T')[0])
 
-    # 2. Lógica específica para o texto visível (FilmeB/Exibidor)
-    # Procuramos o padrão: dia (número) + mês (letras) + ano (número)
     texto_pagina = soup_artigo.get_text().lower()
-    
-    # Dicionário para converter mês abreviado em número
     meses = {
         'jan': 1, 'fev': 2, 'mar': 3, 'abr': 4, 'mai': 5, 'jun': 6,
         'jul': 7, 'ago': 8, 'set': 9, 'out': 10, 'nov': 11, 'dez': 12
     }
 
-    # Busca o padrão "28 jan 26" ou "28/01/2026"
+    # Busca padrão "28 jan 26"
     match_texto = re.search(r'(\d{1,2})\s+([a-z]{3})\s+(\d{2,4})', texto_pagina)
     if match_texto:
         dia = int(match_texto.group(1))
         mes_str = match_texto.group(2)
         ano_bruto = match_texto.group(3)
-        
-        # Converte ano de 2 dígitos (26) para 4 dígitos (2026)
         ano = int(ano_bruto) + 2000 if len(ano_bruto) == 2 else int(ano_bruto)
-        
         if mes_str in meses:
-            try:
-                return datetime(ano, meses[mes_str], dia)
+            try: return datetime(ano, meses[mes_str], dia)
             except: pass
 
-    # 3. Busca padrão numérico simples (28/01/2026)
+    # Busca padrão "28/01/2026"
     match_num = re.search(r'(\d{2})/(\d{2})/(\d{4})', texto_pagina)
     if match_num:
-        try:
-            return datetime.strptime(match_num.group(0), '%d/%m/%Y')
+        try: return datetime.strptime(match_num.group(0), '%d/%m/%Y')
         except: pass
-        
     return None
 
 def formatar_resumo_html(texto_ia):
@@ -79,35 +68,26 @@ def formatar_resumo_html(texto_ia):
     substituicoes = {
         "Ação:": "<strong>Ação:</strong>", 
         "Impacto:": "<strong>Impacto:</strong>", 
-        "Números:": "<strong>Números:</strong>"
+        "Números:": "<strong>Números:</strong>",
+        "Valores:": "<strong>Números:</strong>"
     }
 
     for linha in linhas:
         linha = linha.strip()
         if not linha or any(x in linha.upper() for x in ["TÍTULO:", "RESUMO:", "URL:"]):
             continue
-        
         for original, negrito in substituicoes.items():
             if original in linha:
                 linha = linha.replace(original, negrito)
                 break
-        
         linhas_finalizadas.append(f'<div style="margin-bottom: 8px; display: block;">{linha}</div>')
     return "".join(linhas_finalizadas)
 
 # --- FUNÇÃO DE BUSCA ---
 
 def buscar_clipping_inteligente(termos_telecom, termos_cinema):
-    fontes_telecom = {
-        "TeleTime": "https://teletime.com.br/?s=", 
-        "TeleSíntese": "https://telesintese.com.br/?s=", 
-        "MobileTime": "https://www.mobiletime.com.br/?s="
-    }
-    fontes_cinema = {
-        "TelaViva": "https://telaviva.com.br/?s=",
-        "PortalExibidor": "https://www.exibidor.com.br/noticias/mercado/?s=",
-        "FilmeB": "https://www.filmeb.com.br/noticias?s="
-    }
+    fontes_telecom = {"TeleTime": "https://teletime.com.br/?s=", "TeleSíntese": "https://telesintese.com.br/?s=", "MobileTime": "https://www.mobiletime.com.br/?s="}
+    fontes_cinema = {"TelaViva": "https://telaviva.com.br/?s=", "PortalExibidor": "https://www.exibidor.com.br/noticias/mercado/?s=", "FilmeB": "https://www.filmeb.com.br/noticias?s="}
 
     noticias_filtradas = {}
     agora = datetime.now()
@@ -135,37 +115,21 @@ def buscar_clipping_inteligente(termos_telecom, termos_cinema):
                             dominio_base = "https://www.filmeb.com.br" if "filmeb" in url_base else "https://" + url_base.split('/')[2]
                             url_artigo = dominio_base + url_artigo
 
-                        if any(sujo in url_artigo.lower() for sujo in ['quem-somos', 'anuncie', 'contato']):
-                            continue
+                        if any(sujo in url_artigo.lower() for sujo in ['quem-somos', 'anuncie', 'contato']): continue
                         
                         if url_artigo not in noticias_filtradas:
                             res_art = requests.get(url_artigo, headers=headers, timeout=10)
                             soup_art = BeautifulSoup(res_art.text, 'html.parser')
                             data_pub = extrair_data(soup_art)
                             
-                            # Logs de Rejeição para Auditoria
-                            if not data_pub:
-                                logging.info(f"REJEITADA (Data não identificada): {url_artigo}")
-                                continue
-                            
-                            if data_pub < limite_periodo:
-                                logging.info(f"REJEITADA (Antiga - {data_pub.strftime('%d/%m/%Y')}): {url_artigo}")
-                                continue
+                            if data_pub and data_pub >= limite_periodo:
+                                corpo = soup_art.select_one('.field-name-body')
+                                texto = corpo.get_text(separator=' ', strip=True) if corpo else " ".join([item.text for item in soup_art.find_all('p')[:5]])
 
-                            corpo = soup_art.select_one('.field-name-body')
-                            if corpo:
-                                texto = corpo.get_text(separator=' ', strip=True)
+                                if len(texto) > 100:
+                                    noticias_filtradas[url_artigo] = {"titulo": link.get_text().strip(), "fonte": nome_fonte, "categoria": categoria, "texto": texto[:1500]}
                             else:
-                                p = soup_art.find_all('p')
-                                texto = " ".join([item.text for item in p[:5]])
-
-                            if len(texto) > 100:
-                                noticias_filtradas[url_artigo] = {
-                                    "titulo": link.get_text().strip(), 
-                                    "fonte": nome_fonte, 
-                                    "categoria": categoria, 
-                                    "texto": texto[:1500]
-                                }
+                                logging.info(f"PULADA (Data inválida/antiga): {url_artigo}")
                     time.sleep(0.5)
                 except Exception as e:
                     logging.error(f"Erro em {nome_fonte} ({termo}): {e}")
@@ -181,10 +145,11 @@ def processar_resumos_batch(dict_noticias):
     prompt = (
         "Atue como um Analista de Mercado Sênior especializado em Telecomunicações e Indústria Audiovisual.\n"
         "Sua tarefa é criar resumos técnicos e aprofundados baseados no conteúdo fornecido.\n\n"
-        "REGRAS CRÍTICAS:\n"
+        "REGRAS CRÍTICAS DE EXECUÇÃO:\n"
         "1. Para cada notícia, gere obrigatoriamente um resumo com 3 campos: Ação:, Impacto: e Números:.\n"
-        "2. IMPORTANTE: Utilize o separador '---' entre os resumos.\n"
-        "3. Se irrelevante ao setor de infraestrutura ou cinema, responda apenas 'DESCARTAR'.\n"
+        "2. IMPORTANTE: Utilize o separador '---' (três hífens) estritamente entre os resumos de notícias diferentes.\n"
+        "3. Se a notícia for irrelevante ao setor de infraestrutura, telecom, cinema ou tecnologia, responda apenas 'DESCARTAR'.\n"
+        "4. Mantenha um tom profissional. Não utilize negritos ou qualquer formatação Markdown.\n\n"
     )
     links = list(dict_noticias.keys())
     for url in links:
@@ -195,11 +160,10 @@ def processar_resumos_batch(dict_noticias):
         resumos = [r.strip() for r in response.text.split("---") if len(r.strip()) > 5]
         finalizadas = {}
         for i, resumo in enumerate(resumos):
-            if i < len(links):
+            if i < len(links) and "DESCARTAR" not in resumo.upper():
                 url = links[i]
-                if "DESCARTAR" not in resumo.upper():
-                    dict_noticias[url]['resumo'] = formatar_resumo_html(resumo)
-                    finalizadas[url] = dict_noticias[url]
+                dict_noticias[url]['resumo'] = formatar_resumo_html(resumo)
+                finalizadas[url] = dict_noticias[url]
         return finalizadas
     except Exception as e:
         logging.error(f"Erro Gemini: {e}")
@@ -218,7 +182,7 @@ def enviar_email(lista_noticias, destinatarios):
         if noticias_cat:
             html += f'<h3 style="background:#0056b3;color:#fff;padding:10px;">{cat_nome}</h3>'
             for url, item in noticias_cat.items():
-                html += f'<div style="margin-bottom:20px;padding:15px;border-left:5px solid #0056b3;background:#f9f9f9;">'
+                html += f'<div style="margin-bottom:20px;padding:10px;border-left:5px solid #0056b3;background:#f9f9f9;">'
                 html += f'<b>[{item["fonte"]}]</b> <a href="{url}">{item["titulo"]}</a><br><br>'
                 html += f'<div>{item.get("resumo", "")}</div></div>'
     html += '</body></html>'
@@ -226,10 +190,11 @@ def enviar_email(lista_noticias, destinatarios):
     
     with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
         smtp.login(email_user, email_pass)
-        smtp.send_message(msg)
+        smtp.send_message(smtp.send_message(msg))
     logging.info("E-mail enviado!")
 
 if __name__ == "__main__":
+    logging.info("Iniciando...")
     emails = carregar_lista("email_destino.lista")
     t_telecom = carregar_lista("termos_chave_telecom.lista")
     t_cinema = carregar_lista("termos_chave_cinema.lista")
@@ -238,5 +203,4 @@ if __name__ == "__main__":
         resultado = buscar_clipping_inteligente(t_telecom, t_cinema)
         if resultado:
             final = processar_resumos_batch(resultado)
-            if final:
-                enviar_email(final, emails)
+            if final: enviar_email(final, emails)
