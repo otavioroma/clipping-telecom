@@ -1,7 +1,7 @@
 import requests
 from bs4 import BeautifulSoup
 from google import genai
-import time, os, smtplib, logging, sys
+import time, os, smtplib, logging, sys, re
 from datetime import datetime, timedelta
 from email.message import EmailMessage
 
@@ -31,16 +31,26 @@ def carregar_lista(nome_arquivo):
     return []
 
 def extrair_data(soup_artigo):
-    # Procura em metadados comuns
+    # 1. Metadados padrão
     data_tag = soup_artigo.find('meta', property='article:published_time')
     if data_tag:
         return datetime.fromisoformat(data_tag['content'].split('T')[0])
-    # Fallback para tag time
+    
+    # 2. Tag time
     time_tag = soup_artigo.find('time')
     if time_tag and time_tag.get('datetime'):
         try:
             return datetime.fromisoformat(time_tag['datetime'].split('T')[0])
         except: pass
+
+    # 3. Busca por padrões de data no texto (Ex: 29/01/2026) - Comum no FilmeB/Exibidor
+    texto_pagina = soup_artigo.get_text()
+    padrao_data = re.search(r'(\d{2})/(\d{2})/(\d{4})', texto_pagina)
+    if padrao_data:
+        try:
+            return datetime.strptime(padrao_data.group(0), '%d/%m/%Y')
+        except: pass
+        
     return None
 
 def formatar_resumo_html(texto_ia):
@@ -103,6 +113,8 @@ def buscar_clipping_inteligente(termos_telecom, termos_cinema):
 
                     for link in links:
                         url_artigo = link['href']
+                        titulo_link = link.get_text().strip()
+
                         if url_artigo.startswith('/'):
                             dominio_base = "https://www.filmeb.com.br" if "filmeb" in url_base else "https://" + url_base.split('/')[2]
                             url_artigo = dominio_base + url_artigo
@@ -115,22 +127,33 @@ def buscar_clipping_inteligente(termos_telecom, termos_cinema):
                             soup_art = BeautifulSoup(res_art.text, 'html.parser')
                             data_pub = extrair_data(soup_art)
                             
-                            # CORREÇÃO: Removida a exceção para FilmeB. Agora a data é obrigatória e validada.
-                            if data_pub and data_pub >= limite_periodo:
-                                corpo = soup_art.select_one('.field-name-body')
-                                if corpo:
-                                    texto = corpo.get_text(separator=' ', strip=True)
-                                else:
-                                    p = soup_art.find_all('p')
-                                    texto = " ".join([item.text for item in p[:5]])
+                            # --- LÓGICA DE REJEIÇÃO ---
+                            if not data_pub:
+                                logging.info(f"REJEITADA (Data não encontrada): {titulo_link} | {url_artigo}")
+                                continue
+                            
+                            if data_pub < limite_periodo:
+                                logging.info(f"REJEITADA (Antiga - {data_pub.strftime('%d/%m/%Y')}): {titulo_link}")
+                                continue
 
-                                if len(texto) > 100:
-                                    noticias_filtradas[url_artigo] = {
-                                        "titulo": link.get_text().strip(), 
-                                        "fonte": nome_fonte, 
-                                        "categoria": categoria, 
-                                        "texto": texto[:1500]
-                                    }
+                            corpo = soup_art.select_one('.field-name-body')
+                            if corpo:
+                                texto = corpo.get_text(separator=' ', strip=True)
+                            else:
+                                p = soup_art.find_all('p')
+                                texto = " ".join([item.text for item in p[:5]])
+
+                            if len(texto) <= 100:
+                                logging.info(f"REJEITADA (Texto insuficiente): {titulo_link}")
+                                continue
+
+                            # Se passou por todos os filtros
+                            noticias_filtradas[url_artigo] = {
+                                "titulo": titulo_link, 
+                                "fonte": nome_fonte, 
+                                "categoria": categoria, 
+                                "texto": texto[:1500]
+                            }
                     time.sleep(0.5)
                 except Exception as e:
                     logging.error(f"Erro em {nome_fonte} ({termo}): {e}")
@@ -163,12 +186,11 @@ def processar_resumos_batch(dict_noticias):
         for i, resumo in enumerate(resumos):
             if i < len(links):
                 url = links[i]
-                # CORREÇÃO: Agora só adiciona ao dicionário final se NÃO houver 'DESCARTAR'
                 if "DESCARTAR" not in resumo.upper():
                     dict_noticias[url]['resumo'] = formatar_resumo_html(resumo)
                     finalizadas[url] = dict_noticias[url]
                 else:
-                    logging.info(f"IA descartou a notícia: {url}")
+                    logging.info(f"DESCARTADA (Pela IA): {dict_noticias[url]['titulo']}")
         return finalizadas
     except Exception as e:
         logging.error(f"Erro Gemini: {e}")
