@@ -68,8 +68,7 @@ def formatar_resumo_html(texto_ia):
     substituicoes = {
         "Ação:": "<strong>Ação:</strong>", 
         "Impacto:": "<strong>Impacto:</strong>", 
-        "Números:": "<strong>Números:</strong>",
-        "Valores:": "<strong>Números:</strong>"
+        "Números:": "<strong>Números:</strong>"
     }
 
     for linha in linhas:
