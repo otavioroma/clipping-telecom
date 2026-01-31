@@ -1,50 +1,58 @@
-import requests
+import cloudscraper
 from bs4 import BeautifulSoup
+import time
 
 def testar_acesso_exibidor(termo):
     url = f"https://www.exibidor.com.br/noticias/?s={termo}"
     
-    # Headers completos que mimetizam um navegador Chrome real
-    headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
-        'Accept-Language': 'pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7',
-        'Accept-Encoding': 'gzip, deflate, br',
-        'Referer': 'https://www.google.com/',
-        'Connection': 'keep-alive',
-        'Upgrade-Insecure-Requests': '1'
-    }
+    # Criamos o scraper que simula um navegador de forma mais profunda
+    # O parâmetro browser define qual navegador ele deve mimetizar
+    scraper = cloudscraper.create_scraper(
+        browser={
+            'browser': 'chrome',
+            'platform': 'windows',
+            'desktop': True
+        }
+    )
 
-    print(f"Acessando: {url}...")
+    print(f"Tentando contornar bloqueio para: {url}...")
     
     try:
-        # Usamos uma sessão para gerenciar cookies automaticamente
-        session = requests.Session()
-        response = session.get(url, headers=headers, timeout=15)
+        # O cloudscraper substitui o requests.get
+        response = scraper.get(url, timeout=20)
         
         print(f"Status Code: {response.status_code}")
         
         if response.status_code == 200:
-            print("Sucesso! O site permitiu o acesso.\n")
+            print("Sucesso! O bloqueio foi contornado.\n")
             soup = BeautifulSoup(response.text, 'html.parser')
             
-            # Novo seletor baseado na estrutura atual do Exibidor
-            links = soup.select('section.lista-noticias .box-noticia a, .lista-noticias a')
+            # Mantive seus seletores, mas adicionei uma busca por 'article' que é comum no Exibidor
+            links = soup.select('section.lista-noticias .box-noticia a, .lista-noticias a, article a')
             
             if not links:
-                print("Nenhuma notícia encontrada com os seletores atuais.")
+                print("Nenhuma notícia encontrada. O layout pode ter mudado.")
             else:
-                for i, link in enumerate(links[:5], 1):
+                # Usamos um set para evitar links duplicados (comum em scrapings de notícias)
+                vistos = set()
+                count = 1
+                for link in links:
+                    href = link.get('href')
                     titulo = link.get_text(strip=True)
-                    href = link['href']
-                    full_url = href if href.startswith('http') else f"https://www.exibidor.com.br{href}"
-                    print(f"{i}. {titulo}")
-                    print(f"   Link: {full_url}\n")
+                    
+                    if href and titulo and href not in vistos:
+                        full_url = href if href.startswith('http') else f"https://www.exibidor.com.br{href}"
+                        print(f"{count}. {titulo}")
+                        print(f"   Link: {full_url}\n")
+                        vistos.add(href)
+                        count += 1
+                        if count > 5: break # Limite de 5 resultados
         else:
-            print(f"Falha no acesso. Erro: {response.status_code}")
+            print(f"Ainda recebendo erro {response.status_code}. O site reforçou a segurança.")
             
     except Exception as e:
         print(f"Erro inesperado: {e}")
 
 if __name__ == "__main__":
+    # Importante: instale antes com 'pip install cloudscraper'
     testar_acesso_exibidor("cinema")
