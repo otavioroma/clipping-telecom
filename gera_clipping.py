@@ -1,9 +1,8 @@
 import requests
 from bs4 import BeautifulSoup
 from google import genai
-import time, os, smtplib, logging, sys, re
+import time, os, logging, sys, re
 from datetime import datetime, timedelta
-from email.message import EmailMessage
 
 # Configuração de Log
 logging.basicConfig(
@@ -17,8 +16,8 @@ logging.basicConfig(
 
 # 1. Configurações de Ambiente
 api_key = os.environ.get("GEMINI_API_KEY")
-email_user = os.environ.get("EMAIL_USER")
-email_pass = os.environ.get("EMAIL_PASS")
+resend_api_key = os.environ.get("EMAIL_PASS")  # API Key do Resend (re_...)
+email_remetente = "onboarding@resend.dev"      # Padrão do Resend para testes
 
 client = genai.Client(api_key=api_key)
 
@@ -34,7 +33,8 @@ def extrair_data(soup_artigo):
     """Extrai e converte datas, com lógica específica para o FilmeB (ex: 28 jan 26)"""
     data_tag = soup_artigo.find('meta', property='article:published_time')
     if data_tag:
-        return datetime.fromisoformat(data_tag['content'].split('T')[0])
+        try: return datetime.fromisoformat(data_tag['content'].split('T')[0])
+        except: pass
 
     texto_pagina = soup_artigo.get_text().lower()
     meses = {
@@ -42,7 +42,6 @@ def extrair_data(soup_artigo):
         'jul': 7, 'ago': 8, 'set': 9, 'out': 10, 'nov': 11, 'dez': 12
     }
 
-    # Busca padrão "28 jan 26"
     match_texto = re.search(r'(\d{1,2})\s+([a-z]{3})\s+(\d{2,4})', texto_pagina)
     if match_texto:
         dia = int(match_texto.group(1))
@@ -53,7 +52,6 @@ def extrair_data(soup_artigo):
             try: return datetime(ano, meses[mes_str], dia)
             except: pass
 
-    # Busca padrão "28/01/2026"
     match_num = re.search(r'(\d{2})/(\d{2})/(\d{4})', texto_pagina)
     if match_num:
         try: return datetime.strptime(match_num.group(0), '%d/%m/%Y')
@@ -86,7 +84,6 @@ def formatar_resumo_html(texto_ia):
 
 def buscar_clipping_inteligente(termos_telecom, termos_cinema):
     fontes_telecom = {"TeleTime": "https://teletime.com.br/?s=", "TeleSíntese": "https://telesintese.com.br/?s=", "MobileTime": "https://www.mobiletime.com.br/?s="}
-    # Removido PortalExibidor desta lista
     fontes_cinema = {"TelaViva": "https://telaviva.com.br/?s=", "FilmeB": "https://www.filmeb.com.br/noticias?s="}
 
     noticias_filtradas = {}
@@ -126,8 +123,6 @@ def buscar_clipping_inteligente(termos_telecom, termos_cinema):
 
                                 if len(texto) > 100:
                                     noticias_filtradas[url_artigo] = {"titulo": link.get_text().strip(), "fonte": nome_fonte, "categoria": categoria, "texto": texto[:1500]}
-                            else:
-                                logging.info(f"PULADA (Data inválida/antiga): {url_artigo}")
                     time.sleep(0.5)
                 except Exception as e:
                     logging.error(f"Erro em {nome_fonte} ({termo}): {e}")
@@ -146,8 +141,8 @@ def processar_resumos_batch(dict_noticias):
         "REGRAS CRÍTICAS DE EXECUÇÃO:\n"
         "1. Para cada notícia, gere obrigatoriamente um resumo com 3 campos: Ação:, Impacto: e Números:.\n"
         "2. IMPORTANTE: Utilize o separador '---' (três hífens) estritamente entre os resumos de notícias diferentes.\n"
-        "3. Se a notícia for irrelevante ao setor de infraestrutura, telecom, cinema ou tecnologia, responda apenas 'DESCARTAR'.\n"
-        "4. Mantenha um tom profissional. Não utilize negritos ou qualquer formatação Markdown.\n\n"
+        "3. Se a notícia for irrelevante, responda apenas 'DESCARTAR'.\n"
+        "4. Mantenha um tom profissional. Não utilize negritos Markdown.\n\n"
     )
     links = list(dict_noticias.keys())
     for url in links:
@@ -168,31 +163,53 @@ def processar_resumos_batch(dict_noticias):
         return {}
 
 def enviar_email(lista_noticias, destinatarios):
-    if not destinatarios: return
-    msg = EmailMessage()
-    msg['Subject'] = f'📌 Clipping Telecom & Audiovisual - {datetime.now().strftime("%d/%m/%Y")}'
-    msg['From'] = email_user
-    msg['To'] = ", ".join(destinatarios)
+    if not destinatarios or not resend_api_key:
+        logging.error("Dados de envio (Resend API Key ou Destinatários) ausentes.")
+        return
+
+    assunto = f'📌 Clipping Telecom & Audiovisual - {datetime.now().strftime("%d/%m/%Y")}'
     
-    html = '<html><body style="font-family: Arial;">'
+    html = '<html><body style="font-family: Arial, sans-serif; color: #333;">'
+    html += f'<h2 style="color: #0056b3; border-bottom: 2px solid #0056b3; padding-bottom: 10px;">Clipping Diário - {datetime.now().strftime("%d/%m/%Y")}</h2>'
+    
     for cat_chave, cat_nome in [("TELECOM", "TELECOM"), ("CINEMA", "AUDIOVISUAL")]:
         noticias_cat = {u: i for u, i in lista_noticias.items() if i.get('categoria') == cat_chave}
         if noticias_cat:
-            html += f'<h3 style="background:#0056b3;color:#fff;padding:10px;">{cat_nome}</h3>'
+            html += f'<h3 style="background:#0056b3;color:#fff;padding:10px;margin-top:20px;border-radius:3px;">{cat_nome}</h3>'
             for url, item in noticias_cat.items():
-                html += f'<div style="margin-bottom:20px;padding:10px;border-left:5px solid #0056b3;background:#f9f9f9;">'
-                html += f'<b>[{item["fonte"]}]</b> <a href="{url}">{item["titulo"]}</a><br><br>'
-                html += f'<div>{item.get("resumo", "")}</div></div>'
-    html += '</body></html>'
-    msg.add_alternative(html, subtype='html')
+                html += f'<div style="margin-bottom:20px;padding:15px;background:#fdfdfd;border:1px solid #eee;border-left:5px solid #0056b3;">'
+                html += f'<b style="color:#0056b3;">[{item["fonte"]}]</b> <a href="{url}" style="text-decoration:none;color:#333;font-weight:bold;font-size:16px;">{item["titulo"]}</a><br><br>'
+                html += f'<div style="font-size:14px;line-height:1.5;color:#444;">{item.get("resumo", "")}</div></div>'
     
-    with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
-        smtp.login(email_user, email_pass)
-        smtp.send_message(msg)
-        logging.info("E-mail enviado!")
+    html += '<p style="font-size:12px;color:#999;margin-top:30px;">Gerado automaticamente via Gemini IA & Resend.</p>'
+    html += '</body></html>'
+
+    try:
+        url_resend = "https://api.resend.com/emails"
+        headers = {
+            "Authorization": f"Bearer {resend_api_key}",
+            "Content-Type": "application/json"
+        }
+        
+        payload = {
+            "from": f"Clipping Telecom <{email_remetente}>",
+            "to": destinatarios,
+            "subject": assunto,
+            "html": html
+        }
+
+        response = requests.post(url_resend, json=payload, headers=headers)
+        
+        if response.status_code in [200, 201]:
+            logging.info(f"E-mail enviado com sucesso! ID: {response.json().get('id')}")
+        else:
+            logging.error(f"Erro Resend: {response.status_code} - {response.text}")
+
+    except Exception as e:
+        logging.error(f"Erro ao conectar com a API do Resend: {e}")
 
 if __name__ == "__main__":
-    logging.info("Iniciando...")
+    logging.info("Iniciando processo de clipping...")
     emails = carregar_lista("email_destino.lista")
     t_telecom = carregar_lista("termos_chave_telecom.lista")
     t_cinema = carregar_lista("termos_chave_cinema.lista")
@@ -200,5 +217,13 @@ if __name__ == "__main__":
     if emails and (t_telecom or t_cinema):
         resultado = buscar_clipping_inteligente(t_telecom, t_cinema)
         if resultado:
+            logging.info(f"Notícias encontradas: {len(resultado)}. Processando resumos com IA...")
             final = processar_resumos_batch(resultado)
-            if final: enviar_email(final, emails)
+            if final: 
+                enviar_email(final, emails)
+            else:
+                logging.warning("Nenhuma notícia relevante após filtragem da IA.")
+        else:
+            logging.info("Nenhuma notícia nova encontrada no período.")
+    else:
+        logging.error("Arquivos de configuração (listas) não encontrados ou vazios.")
