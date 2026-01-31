@@ -86,7 +86,8 @@ def formatar_resumo_html(texto_ia):
 
 def buscar_clipping_inteligente(termos_telecom, termos_cinema):
     fontes_telecom = {"TeleTime": "https://teletime.com.br/?s=", "TeleSíntese": "https://telesintese.com.br/?s=", "MobileTime": "https://www.mobiletime.com.br/?s="}
-    fontes_cinema = {"TelaViva": "https://telaviva.com.br/?s=", "PortalExibidor": "https://www.exibidor.com.br/noticias/?s=", "FilmeB": "https://www.filmeb.com.br/noticias?s="}
+    # Removido PortalExibidor desta lista
+    fontes_cinema = {"TelaViva": "https://telaviva.com.br/?s=", "FilmeB": "https://www.filmeb.com.br/noticias?s="}
 
     noticias_filtradas = {}
     agora = datetime.now()
@@ -103,9 +104,6 @@ def buscar_clipping_inteligente(termos_telecom, termos_cinema):
                     
                     if "filmeb" in url_base:
                         links = soup.select('div.noticias-lista h3 a, h3.post-title a, .views-field-title a')[:5]
-                    elif "exibidor" in url_base:
-                        # Seletores atualizados para a busca do Exibidor
-                        links = soup.select('section.lista-noticias a, .box-noticia a, .grid-noticias a')[:5]
                     else:
                         links = soup.select('h2.entry-title a, h3.entry-title a, #main h2 a')[:3]
 
