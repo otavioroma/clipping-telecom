@@ -26,7 +26,8 @@ client = genai.Client(api_key=api_key)
 def carregar_lista(nome_arquivo):
     if os.path.exists(nome_arquivo):
         with open(nome_arquivo, 'r', encoding='utf-8') as f:
-            return [linha.strip() for linha in f if linha.strip()]
+            # Filtra linhas vazias e ignora linhas que começam com #
+            return [linha.strip() for linha in f if linha.strip() and not linha.strip().startswith('#')]
     return []
 
 def extrair_data(soup_artigo):
