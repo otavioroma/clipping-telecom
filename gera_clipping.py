@@ -4,7 +4,7 @@ from google import genai
 import time, os, logging, sys, re
 from datetime import datetime, timedelta
 
-# Configuração de Log
+# Configuração de Log (Mantendo o seu padrão detalhado com checkpoints)
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
@@ -16,8 +16,8 @@ logging.basicConfig(
 
 # 1. Configurações de Ambiente
 api_key = os.environ.get("GEMINI_API_KEY")
-resend_api_key = os.environ.get("EMAIL_PASS")  # API Key do Resend (re_...)
-email_remetente = "onboarding@resend.dev"      # Padrão do Resend para testes
+resend_api_key = os.environ.get("EMAIL_PASS")  # Deve ser a API Key do Resend (re_...)
+email_remetente = "clipping@otavioroma.com.br"  # Domínio otavioroma.com.br já verificado
 
 client = genai.Client(api_key=api_key)
 
@@ -30,7 +30,7 @@ def carregar_lista(nome_arquivo):
     return []
 
 def extrair_data(soup_artigo):
-    """Extrai e converte datas, com lógica específica para o FilmeB (ex: 28 jan 26)"""
+    """Extrai e converte datas, com lógica específica para o FilmeB e portais de telecom"""
     data_tag = soup_artigo.find('meta', property='article:published_time')
     if data_tag:
         try: return datetime.fromisoformat(data_tag['content'].split('T')[0])
@@ -123,6 +123,8 @@ def buscar_clipping_inteligente(termos_telecom, termos_cinema):
 
                                 if len(texto) > 100:
                                     noticias_filtradas[url_artigo] = {"titulo": link.get_text().strip(), "fonte": nome_fonte, "categoria": categoria, "texto": texto[:1500]}
+                            else:
+                                logging.info(f"PULADA (Data inválida/antiga): {url_artigo}")
                     time.sleep(0.5)
                 except Exception as e:
                     logging.error(f"Erro em {nome_fonte} ({termo}): {e}")
@@ -164,7 +166,7 @@ def processar_resumos_batch(dict_noticias):
 
 def enviar_email(lista_noticias, destinatarios):
     if not destinatarios or not resend_api_key:
-        logging.error("Dados de envio (Resend API Key ou Destinatários) ausentes.")
+        logging.error("Dados ausentes: Verifique destinatários ou EMAIL_PASS (Resend Key).")
         return
 
     assunto = f'📌 Clipping Telecom & Audiovisual - {datetime.now().strftime("%d/%m/%Y")}'
@@ -181,7 +183,7 @@ def enviar_email(lista_noticias, destinatarios):
                 html += f'<b style="color:#0056b3;">[{item["fonte"]}]</b> <a href="{url}" style="text-decoration:none;color:#333;font-weight:bold;font-size:16px;">{item["titulo"]}</a><br><br>'
                 html += f'<div style="font-size:14px;line-height:1.5;color:#444;">{item.get("resumo", "")}</div></div>'
     
-    html += '<p style="font-size:12px;color:#999;margin-top:30px;">Gerado automaticamente via Gemini IA & Resend.</p>'
+    html += '<p style="font-size:12px;color:#999;margin-top:30px;">Gerado automaticamente para Otavio Scheidegger via Gemini IA & Resend.</p>'
     html += '</body></html>'
 
     try:
@@ -203,27 +205,37 @@ def enviar_email(lista_noticias, destinatarios):
         if response.status_code in [200, 201]:
             logging.info(f"E-mail enviado com sucesso! ID: {response.json().get('id')}")
         else:
-            logging.error(f"Erro Resend: {response.status_code} - {response.text}")
+            logging.error(f"Falha no Resend: {response.status_code} - {response.text}")
 
     except Exception as e:
-        logging.error(f"Erro ao conectar com a API do Resend: {e}")
+        logging.error(f"Erro de conexão ao enviar para o Resend: {e}")
 
 if __name__ == "__main__":
-    logging.info("Iniciando processo de clipping...")
+    logging.info("=== INICIANDO PROCESSO DE CLIPPING ===")
+    
+    # Checkpoint: Leitura de arquivos
     emails = carregar_lista("email_destino.lista")
     t_telecom = carregar_lista("termos_chave_telecom.lista")
     t_cinema = carregar_lista("termos_chave_cinema.lista")
+    
+    logging.info(f"Arquivos lidos. Emails: {len(emails)}, Telecom: {len(t_telecom)}, Cinema: {len(t_cinema)}")
 
     if emails and (t_telecom or t_cinema):
+        logging.info("Iniciando busca inteligente nas fontes de notícias...")
         resultado = buscar_clipping_inteligente(t_telecom, t_cinema)
+        
         if resultado:
-            logging.info(f"Notícias encontradas: {len(resultado)}. Processando resumos com IA...")
+            logging.info(f"{len(resultado)} notícias potenciais encontradas. Gerando resumos com Gemini...")
             final = processar_resumos_batch(resultado)
+            
             if final: 
+                logging.info(f"IA concluiu resumos de {len(final)} notícias relevantes. Disparando e-mail...")
                 enviar_email(final, emails)
             else:
-                logging.warning("Nenhuma notícia relevante após filtragem da IA.")
+                logging.warning("A IA descartou todas as notícias como irrelevantes para o setor.")
         else:
-            logging.info("Nenhuma notícia nova encontrada no período.")
+            logging.info("Nenhuma notícia encontrada com os termos informados nas últimas 24/72h.")
     else:
-        logging.error("Arquivos de configuração (listas) não encontrados ou vazios.")
+        logging.error("Finalizado: Arquivos de configuração vazios ou ausentes.")
+    
+    logging.info("=== FIM DO PROCESSO ===")
