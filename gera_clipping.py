@@ -143,7 +143,7 @@ def processar_resumos_batch(dict_noticias):
         "REGRAS CRÍTICAS DE EXECUÇÃO:\n"
         "1. Para cada notícia, gere obrigatoriamente um resumo com 3 campos: Ação:, Impacto: e Números:.\n"
         "2. IMPORTANTE: Utilize o separador '---' (três hífens) estritamente entre os resumos de notícias diferentes.\n"
-        "3. Se a notícia for irrelevante, responda apenas 'DESCARTAR'.\n"
+        "3. Se a notícia for irrelevante ao setor de data center, telecom, mercado audiovisual ou TI, responda apenas 'DESCARTAR'.\n"
         "4. Mantenha um tom profissional. Não utilize negritos Markdown.\n\n"
     )
     links = list(dict_noticias.keys())
