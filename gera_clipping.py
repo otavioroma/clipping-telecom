@@ -18,6 +18,7 @@ logging.basicConfig(
 api_key = os.environ.get("GEMINI_API_KEY")
 resend_api_key = os.environ.get("EMAIL_PASS")  # Deve ser a API Key do Resend (re_...)
 email_remetente = "clipping@otavioroma.com.br"  # Domínio otavioroma.com.br já verificado
+dest_clipping_vazio = "otavioroma@gmail.com" #Destinatários se o clipping não gerar notícias
 
 client = genai.Client(api_key=api_key)
 
@@ -165,77 +166,79 @@ def processar_resumos_batch(dict_noticias):
         logging.error(f"Erro Gemini: {e}")
         return {}
 
-def enviar_email(lista_noticias, destinatarios):
-    if not destinatarios or not resend_api_key:
-        logging.error("Dados ausentes: Verifique destinatários ou EMAIL_PASS (Resend Key).")
-        return
+def enviar_email(lista_noticias, destinatarios, aviso_vazio=False):
+    """
+    Envia o clipping formatado ou um aviso de que não houve notícias no período.
+    """
+    # Define o alvo do e-mail
+    alvo_envio = dest_clipping_vazio if aviso_vazio else destinatarios
 
-    assunto = f'📌 Clipping Telecom & Audiovisual - {datetime.now().strftime("%d/%m/%Y")}'
-    
-    html = '<html><body style="font-family: Arial, sans-serif; color: #333;">'
-    html += f'<h2 style="color: #0056b3; border-bottom: 2px solid #0056b3; padding-bottom: 10px;">Clipping Diário - {datetime.now().strftime("%d/%m/%Y")}</h2>'
-    
-    for cat_chave, cat_nome in [("TELECOM", "TELECOM"), ("CINEMA", "AUDIOVISUAL")]:
-        noticias_cat = {u: i for u, i in lista_noticias.items() if i.get('categoria') == cat_chave}
-        if noticias_cat:
-            html += f'<h3 style="background:#0056b3;color:#fff;padding:10px;margin-top:20px;border-radius:3px;">{cat_nome}</h3>'
-            for url, item in noticias_cat.items():
-                html += f'<div style="margin-bottom:20px;padding:15px;background:#fdfdfd;border:1px solid #eee;border-left:5px solid #0056b3;">'
-                html += f'<b style="color:#0056b3;">[{item["fonte"]}]</b> <a href="{url}" style="text-decoration:none;color:#333;font-weight:bold;font-size:16px;">{item["titulo"]}</a><br><br>'
-                html += f'<div style="font-size:14px;line-height:1.5;color:#444;">{item.get("resumo", "")}</div></div>'
-    
-    html += '<p style="font-size:12px;color:#999;margin-top:30px;">Gerado automaticamente para Otavio Scheidegger via Gemini IA & Resend.</p>'
-    html += '</body></html>'
+    if aviso_vazio:
+        assunto = f'⚠️ Clipping Telecom - Nenhuma notícia relevante - {datetime.now().strftime("%d/%m/%Y")}'
+        html = f"""
+        <html><body style="font-family: Arial, sans-serif; color: #333;">
+            <h2 style="color: #d9534f;">Aviso de Clipping</h2>
+            <p>O processo de varredura foi concluído hoje, <b>{datetime.now().strftime("%d/%m/%Y")}</b>, 
+            mas nenhuma notícia relevante foi encontrada ou validada pela IA.</p>
+        </body></html>
+        """
+    else:
+        # MONTAGEM DO HTML DO CLIPPING (Restaurado)
+        assunto = f'📌 Clipping Telecom & Audiovisual - {datetime.now().strftime("%d/%m/%Y")}'
+        html = '<html><body style="font-family: Arial, sans-serif; color: #333;">'
+        html += f'<h2 style="color: #0056b3; border-bottom: 2px solid #0056b3; padding-bottom: 10px;">Clipping Diário - {datetime.now().strftime("%d/%m/%Y")}</h2>'
+        
+        for cat_chave, cat_nome in [("TELECOM", "TELECOM"), ("CINEMA", "AUDIOVISUAL")]:
+            noticias_cat = {u: i for u, i in lista_noticias.items() if i.get('categoria') == cat_chave}
+            if noticias_cat:
+                html += f'<h3 style="background:#0056b3;color:#fff;padding:10px;margin-top:20px;border-radius:3px;">{cat_nome}</h3>'
+                for url, item in noticias_cat.items():
+                    html += f'<div style="margin-bottom:20px;padding:15px;background:#fdfdfd;border:1px solid #eee;border-left:5px solid #0056b3;">'
+                    html += f'<b style="color:#0056b3;">[{item["fonte"]}]</b> <a href="{url}" style="text-decoration:none;color:#333;font-weight:bold;font-size:16px;">{item["titulo"]}</a><br><br>'
+                    html += f'<div style="font-size:14px;line-height:1.5;color:#444;">{item.get("resumo", "")}</div></div>'
+        
+        html += '<p style="font-size:12px;color:#999;margin-top:30px;">Gerado automaticamente para Otavio Scheidegger via Gemini IA & Resend.</p></body></html>'
 
+    # DISPARO VIA RESEND
     try:
         url_resend = "https://api.resend.com/emails"
-        headers = {
-            "Authorization": f"Bearer {resend_api_key}",
-            "Content-Type": "application/json"
-        }
-        
+        headers = {"Authorization": f"Bearer {resend_api_key}", "Content-Type": "application/json"}
         payload = {
             "from": f"Clipping Telecom <{email_remetente}>",
-            "to": destinatarios,
+            "to": alvo_envio,
             "subject": assunto,
             "html": html
         }
-
         response = requests.post(url_resend, json=payload, headers=headers)
-        
         if response.status_code in [200, 201]:
-            logging.info(f"E-mail enviado com sucesso! ID: {response.json().get('id')}")
+            logging.info(f"E-mail enviado com sucesso! (Aviso vazio: {aviso_vazio})")
         else:
-            logging.error(f"Falha no Resend: {response.status_code} - {response.text}")
-
+            logging.error(f"Erro Resend: {response.text}")
     except Exception as e:
-        logging.error(f"Erro de conexão ao enviar para o Resend: {e}")
+        logging.error(f"Erro ao enviar e-mail: {e}")
 
 if __name__ == "__main__":
     logging.info("=== INICIANDO PROCESSO DE CLIPPING ===")
     
-    # Checkpoint: Leitura de arquivos
     emails = carregar_lista("email_destino.lista")
     t_telecom = carregar_lista("termos_chave_telecom.lista")
     t_cinema = carregar_lista("termos_chave_cinema.lista")
     
-    logging.info(f"Arquivos lidos. Emails: {len(emails)}, Telecom: {len(t_telecom)}, Cinema: {len(t_cinema)}")
-
     if emails and (t_telecom or t_cinema):
-        logging.info("Iniciando busca inteligente nas fontes de notícias...")
         resultado = buscar_clipping_inteligente(t_telecom, t_cinema)
         
+        final = {}
         if resultado:
-            logging.info(f"{len(resultado)} notícias potenciais encontradas. Gerando resumos com Gemini...")
+            logging.info(f"{len(resultado)} notícias potenciais. Processando resumos...")
             final = processar_resumos_batch(resultado)
-            
-            if final: 
-                logging.info(f"IA concluiu resumos de {len(final)} notícias relevantes. Disparando e-mail...")
-                enviar_email(final, emails)
-            else:
-                logging.warning("A IA descartou todas as notícias como irrelevantes para o setor.")
+        
+        # TRATAMENTO PARA LISTA VAZIA:
+        if not final:
+            logging.warning("Nenhuma notícia relevante encontrada. Enviando aviso para otavioroma@gmail.com")
+            enviar_email(None, None, aviso_vazio=True)
         else:
-            logging.info("Nenhuma notícia encontrada com os termos informados nas últimas 24/72h.")
+            logging.info(f"Enviando clipping com {len(final)} notícias.")
+            enviar_email(final, emails)
     else:
         logging.error("Finalizado: Arquivos de configuração vazios ou ausentes.")
     
