@@ -17,7 +17,7 @@ logging.basicConfig(
 # 1. Configurações de Ambiente
 api_key = os.environ.get("GEMINI_API_KEY")
 resend_api_key = os.environ.get("EMAIL_PASS")  # Deve ser a API Key do Resend (re_...)
-email_remetente = "clipping@otavioroma.com.br"  # Domínio otavioroma.com.br já verificado
+email_remetente = "clipping.ai.detic@otavioroma.com.br"  # Domínio otavioroma.com.br já verificado
 dest_clipping_vazio = "otavioroma@gmail.com" #Destinatários se o clipping não gerar notícias
 
 client = genai.Client(api_key=api_key)
