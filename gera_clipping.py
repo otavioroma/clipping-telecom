@@ -98,7 +98,7 @@ def buscar_clipping_inteligente(termos_telecom, termos_cinema):
         for nome_fonte, url_base in lista_fontes.items():
             for termo in lista_termos:
                 try:
-                    res = requests.get(f"{url_base}{termo.replace(' ', '+')}", headers=headers, timeout=15)
+                    res = requests.get(f"{url_base}{termo.replace(' ', '+')}", headers=headers, timeout=5)
                     soup = BeautifulSoup(res.text, 'html.parser')
                     
                     if "filmeb" in url_base:
