@@ -1,7 +1,7 @@
 name: Clipping Diario Telecom
 
 on:
-  # schedule:
+  schedule:
      - cron: '0 12 * * 1-5'
   workflow_dispatch:
 
