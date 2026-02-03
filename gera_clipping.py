@@ -1,8 +1,11 @@
-import requests
+﻿import requests
 from bs4 import BeautifulSoup
 from google import genai
 import time, os, logging, sys, re
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
+from dotenv import load_dotenv
+from pathlib import Path
 
 # Configuração de Log (Mantendo o seu padrão detalhado com checkpoints)
 logging.basicConfig(
@@ -14,31 +17,52 @@ logging.basicConfig(
     ]
 )
 
-# 1. Configurações de Ambiente
+#1. Configurações de Ambiente para rodar no GitHub Actions
+
+
+# 1. Configurações de Ambiente para rodar no VS CODE
+load_dotenv(dotenv_path=Path(__file__).with_name(".env"))
 api_key = os.environ.get("GEMINI_API_KEY")
 resend_api_key = os.environ.get("EMAIL_PASS")  # Deve ser a API Key do Resend (re_...)
 email_remetente = "clipping.ai.detic@otavioroma.com.br"  # Domínio otavioroma.com.br já verificado
 dest_clipping_vazio = "otavioroma@gmail.com" #Destinatários se o clipping não gerar notícias
 
 client = genai.Client(api_key=api_key)
+TZ_BRASILIA = ZoneInfo("America/Sao_Paulo")
 
 # --- FUNÇÕES DE SUPORTE ---
 
 def carregar_lista(nome_arquivo):
-    if os.path.exists(nome_arquivo):
-        with open(nome_arquivo, 'r', encoding='utf-8') as f:
+    caminho = Path(__file__).with_name(nome_arquivo)
+    if caminho.exists():
+        with open(caminho, 'r', encoding='utf-8') as f:
             # Filtra linhas vazias e ignora linhas que começam com #
             return [linha.strip() for linha in f if linha.strip() and not linha.strip().startswith('#')]
     return []
 
-def extrair_data(soup_artigo):
-    """Extrai e converte datas, com lógica específica para o FilmeB e portais de telecom"""
+def normalizar_data(dt):
+    if not dt:
+        return None
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=TZ_BRASILIA)
+    return dt.astimezone(TZ_BRASILIA)
+
+def extrair_data(soup_artigo, texto_pagina=None, allow_text_fallback=True):
+    """Extrai e converte datas por metadados e, se permitido, por texto."""
     data_tag = soup_artigo.find('meta', property='article:published_time')
-    if data_tag:
-        try: return datetime.fromisoformat(data_tag['content'].split('T')[0])
+    if data_tag and data_tag.get('content'):
+        try: return normalizar_data(datetime.fromisoformat(data_tag['content']))
         except: pass
 
-    texto_pagina = soup_artigo.get_text().lower()
+    time_tag = soup_artigo.find('time', datetime=True)
+    if time_tag and time_tag.get('datetime'):
+        try: return normalizar_data(datetime.fromisoformat(time_tag['datetime']))
+        except: pass
+
+    if not allow_text_fallback:
+        return None
+
+    texto_pagina = (texto_pagina or soup_artigo.get_text()).lower()
     meses = {
         'jan': 1, 'fev': 2, 'mar': 3, 'abr': 4, 'mai': 5, 'jun': 6,
         'jul': 7, 'ago': 8, 'set': 9, 'out': 10, 'nov': 11, 'dez': 12
@@ -51,12 +75,12 @@ def extrair_data(soup_artigo):
         ano_bruto = match_texto.group(3)
         ano = int(ano_bruto) + 2000 if len(ano_bruto) == 2 else int(ano_bruto)
         if mes_str in meses:
-            try: return datetime(ano, meses[mes_str], dia)
+            try: return normalizar_data(datetime(ano, meses[mes_str], dia))
             except: pass
 
     match_num = re.search(r'(\d{2})/(\d{2})/(\d{4})', texto_pagina)
     if match_num:
-        try: return datetime.strptime(match_num.group(0), '%d/%m/%Y')
+        try: return normalizar_data(datetime.strptime(match_num.group(0), '%d/%m/%Y'))
         except: pass
     return None
 
@@ -82,23 +106,45 @@ def formatar_resumo_html(texto_ia):
         linhas_finalizadas.append(f'<div style="margin-bottom: 8px; display: block;">{linha}</div>')
     return "".join(linhas_finalizadas)
 
-# --- FUNÇÃO DE BUSCA ---
+# --- FUN�?�fO DE BUSCA ---
 
 def buscar_clipping_inteligente(termos_telecom, termos_cinema):
     fontes_telecom = {"TeleTime": "https://teletime.com.br/?s=", "TeleSíntese": "https://telesintese.com.br/?s=", "MobileTime": "https://www.mobiletime.com.br/?s="}
     fontes_cinema = {"TelaViva": "https://telaviva.com.br/?s=", "FilmeB": "https://www.filmeb.com.br/noticias?s="}
 
     noticias_filtradas = {}
-    agora = datetime.now()
+    agora = datetime.now(TZ_BRASILIA)
     horas_atras = 72 if agora.weekday() == 0 else 24
     limite_periodo = (agora - timedelta(hours=horas_atras)).replace(hour=0, minute=0, second=0, microsecond=0)
     headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'}
+    session = requests.Session()
+
+    def extrair_texto_artigo(soup_art):
+        seletores = [
+            "article",
+            ".entry-content",
+            ".post-content",
+            ".field-name-body",
+            ".content",
+            ".noticia-texto",
+        ]
+        for sel in seletores:
+            bloco = soup_art.select_one(sel)
+            if bloco:
+                return bloco.get_text(separator=' ', strip=True)
+        return " ".join([item.text for item in soup_art.find_all('p')[:8]])
+
+    def extrair_data_por_fonte(soup_art, nome_fonte):
+        if nome_fonte == "FilmeB":
+            texto = extrair_texto_artigo(soup_art)
+            return extrair_data(soup_art, texto_pagina=texto, allow_text_fallback=True)
+        return extrair_data(soup_art, allow_text_fallback=False)
 
     def executar_varredura(lista_fontes, lista_termos, categoria):
         for nome_fonte, url_base in lista_fontes.items():
             for termo in lista_termos:
                 try:
-                    res = requests.get(f"{url_base}{termo.replace(' ', '+')}", headers=headers, timeout=5)
+                    res = session.get(f"{url_base}{termo.replace(' ', '+')}", headers=headers, timeout=5)
                     soup = BeautifulSoup(res.text, 'html.parser')
                     
                     if "filmeb" in url_base:
@@ -115,18 +161,17 @@ def buscar_clipping_inteligente(termos_telecom, termos_cinema):
                         if any(sujo in url_artigo.lower() for sujo in ['quem-somos', 'anuncie', 'contato']): continue
                         
                         if url_artigo not in noticias_filtradas:
-                            res_art = requests.get(url_artigo, headers=headers, timeout=10)
+                            res_art = session.get(url_artigo, headers=headers, timeout=5)
                             soup_art = BeautifulSoup(res_art.text, 'html.parser')
-                            data_pub = extrair_data(soup_art)
+                            data_pub = extrair_data_por_fonte(soup_art, nome_fonte)
                             
                             if data_pub and data_pub >= limite_periodo:
-                                corpo = soup_art.select_one('.field-name-body')
-                                texto = corpo.get_text(separator=' ', strip=True) if corpo else " ".join([item.text for item in soup_art.find_all('p')[:5]])
+                                texto = extrair_texto_artigo(soup_art)
 
                                 if len(texto) > 100:
                                     noticias_filtradas[url_artigo] = {"titulo": link.get_text().strip(), "fonte": nome_fonte, "categoria": categoria, "texto": texto[:1500]}
                             else:
-                                logging.info(f"PULADA (Data inválida/antiga): {url_artigo}")
+                                logging.info(f"PULADA (Data invalida/antiga): {url_artigo}")
                     time.sleep(0.5)
                 except Exception as e:
                     logging.error(f"Erro em {nome_fonte} ({termo}): {e}")
@@ -174,7 +219,7 @@ def enviar_email(lista_noticias, destinatarios, aviso_vazio=False):
     alvo_envio = dest_clipping_vazio if aviso_vazio else destinatarios
 
     if aviso_vazio:
-        assunto = f'⚠️ Clipping Telecom - Nenhuma notícia relevante - {datetime.now().strftime("%d/%m/%Y")}'
+        assunto = f'Clipping Telecom - Nenhuma notícia relevante - {datetime.now().strftime("%d/%m/%Y")}'
         html = f"""
         <html><body style="font-family: Arial, sans-serif; color: #333;">
             <h2 style="color: #d9534f;">Aviso de Clipping</h2>
@@ -184,7 +229,7 @@ def enviar_email(lista_noticias, destinatarios, aviso_vazio=False):
         """
     else:
         # MONTAGEM DO HTML DO CLIPPING (Restaurado)
-        assunto = f'📌 Clipping Telecom & Audiovisual - {datetime.now().strftime("%d/%m/%Y")}'
+        assunto = f'Clipping Telecom & Audiovisual - {datetime.now().strftime("%d/%m/%Y")}'
         html = '<html><body style="font-family: Arial, sans-serif; color: #333;">'
         html += f'<h2 style="color: #0056b3; border-bottom: 2px solid #0056b3; padding-bottom: 10px;">Clipping Diário - {datetime.now().strftime("%d/%m/%Y")}</h2>'
         
@@ -237,7 +282,7 @@ if __name__ == "__main__":
             logging.warning("Nenhuma notícia relevante encontrada. Enviando aviso para otavioroma@gmail.com")
             enviar_email(None, None, aviso_vazio=True)
         else:
-            logging.info(f"Enviando clipping com {len(final)} notícias.")
+            logging.info(f"Enviando clipping com {len(final)} noticias.")
             enviar_email(final, emails)
     else:
         logging.error("Finalizado: Arquivos de configuração vazios ou ausentes.")
